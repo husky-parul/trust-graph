@@ -1,0 +1,31 @@
+# Local Claude Code config
+.claude/settings.local.json
+
+# Temporary files
+tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Java / Maven
+target/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

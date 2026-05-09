@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trust DAG — Agentic IAM Demo</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=2">
+</head>
+<body>
+  <div id="page-tabs">
+    <button class="page-tab active" data-page="trust-graph">Trust Graph</button>
+    <button class="page-tab" data-page="pipeline-builder">Pipeline Builder</button>
+  </div>
+
+  <div id="trust-graph-page" class="page-content active">
+    <div id="topbar">
+      <span class="topbar-title">Trust DAG</span>
+      <span id="run-id" class="topbar-run-id"></span>
+      <button id="btn-load" class="btn-load">Load</button>
+      <span id="badge-alive" class="badge alive">ALIVE</span>
+      <span id="badge-score" class="badge score">Score: 0</span>
+      <button id="btn-print" class="btn-print">print view</button>
+    </div>
+
+  <div id="event-row">
+    <div id="event-pills"></div>
+  </div>
+
+  <div id="main">
+    <div id="graph-pane">
+      <svg id="graph"></svg>
+      <div id="legend">
+        <span class="legend-item"><span class="legend-dot principal"></span> Principal</span>
+        <span class="legend-item"><span class="legend-dot agent"></span> Agent</span>
+        <span class="legend-item"><span class="legend-dot resource"></span> Resource</span>
+        <span class="legend-item"><span class="legend-line auth"></span> Authenticated</span>
+        <span class="legend-item"><span class="legend-line denied"></span> Denied</span>
+        <span class="legend-item"><span class="legend-line unauth"></span> Unauthenticated</span>
+      </div>
+    </div>
+    <div id="detail-panel" class="hidden">
+      <div id="detail-header">
+        <span id="detail-title"></span>
+        <button id="detail-close">&times;</button>
+      </div>
+      <div id="detail-tabs">
+        <button class="tab active" data-tab="explain">Explain</button>
+        <button class="tab" data-tab="edges">Edges</button>
+        <button class="tab" data-tab="paths">Paths</button>
+        <button class="tab" data-tab="assessment">Assessment</button>
+      </div>
+      <div id="tab-explain" class="tab-content active"></div>
+      <div id="tab-edges" class="tab-content"></div>
+      <div id="tab-paths" class="tab-content"></div>
+      <div id="tab-assessment" class="tab-content"></div>
+    </div>
+  </div>
+  </div>
+
+  <div id="pipeline-builder-page" class="page-content">
+    <div id="pipeline-topbar">
+      <span class="topbar-title">Pipeline Builder</span>
+      <button id="btn-load-templates" class="btn-secondary">Load Template</button>
+    </div>
+
+    <div id="pipeline-main">
+      <div id="agent-selector">
+        <h3>Available Agents</h3>
+        <div id="agent-list" class="loading">Loading agents...</div>
+      </div>
+
+      <div id="pipeline-preview">
+        <h3>Pipeline Steps</h3>
+        <div id="pipeline-steps">
+          <div class="empty-state">Select agents from the left to build a pipeline</div>
+        </div>
+        <div id="pipeline-actions">
+          <button id="btn-run-pipeline" class="btn-primary" disabled>Run Pipeline</button>
+          <button id="btn-clear-pipeline" class="btn-secondary">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="execution-log">
+      <h3>Execution Log</h3>
+      <div id="log-content">
+        <div class="empty-state">Pipeline execution results will appear here</div>
+      </div>
+      <button id="btn-view-trust-graph" class="btn-primary" style="display:none">View in Trust Graph</button>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=2"></script>
+  <script src="/static/pipeline-builder.js"></script>
+</body>
+</html>

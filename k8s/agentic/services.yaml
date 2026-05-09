@@ -1,0 +1,77 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+spec:
+  selector:
+    app: data-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+spec:
+  selector:
+    app: training-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eval-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+spec:
+  selector:
+    app: eval-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deploy-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+spec:
+  selector:
+    app: deploy-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-registry
+  namespace: agentic-ml
+spec:
+  selector:
+    app: model-registry
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

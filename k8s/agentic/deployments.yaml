@@ -1,0 +1,252 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+    app.kubernetes.io/name: data-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-agent
+  template:
+    metadata:
+      labels:
+        app: data-agent
+        kagenti.io/type: agent
+        protocol.kagenti.io/a2a: ""
+        app.kubernetes.io/name: data-agent
+    spec:
+      serviceAccountName: data-agent
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: data-agent
+            - name: AGENT_DESCRIPTION
+              value: "Data loading and preprocessing agent"
+            - name: AGENT_SKILLS
+              value: "data-loading,preprocessing"
+            - name: AGENT_CAPABILITIES
+              value: "read:features"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
+            - name: AGENT_ENDPOINT
+              value: "http://data-agent.agentic-ml.svc.cluster.local:8000"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+    app.kubernetes.io/name: training-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: training-agent
+  template:
+    metadata:
+      labels:
+        app: training-agent
+        kagenti.io/type: agent
+        protocol.kagenti.io/a2a: ""
+        app.kubernetes.io/name: training-agent
+    spec:
+      serviceAccountName: training-agent
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: training-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model training agent"
+            - name: AGENT_SKILLS
+              value: "model-training"
+            - name: AGENT_CAPABILITIES
+              value: "write:model-registry,provision:gpu"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
+            - name: AGENT_ENDPOINT
+              value: "http://training-agent.agentic-ml.svc.cluster.local:8000"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eval-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+    app.kubernetes.io/name: eval-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eval-agent
+  template:
+    metadata:
+      labels:
+        app: eval-agent
+        kagenti.io/type: agent
+        protocol.kagenti.io/a2a: ""
+        app.kubernetes.io/name: eval-agent
+    spec:
+      serviceAccountName: eval-agent
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: eval-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model evaluation agent"
+            - name: AGENT_SKILLS
+              value: "model-evaluation"
+            - name: AGENT_CAPABILITIES
+              value: "read:test-data"
+            - name: AGENT_ENDPOINT
+              value: "http://eval-agent.agentic-ml.svc.cluster.local:8000"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-agent
+  namespace: agentic-ml
+  labels:
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+    app.kubernetes.io/name: deploy-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy-agent
+  template:
+    metadata:
+      labels:
+        app: deploy-agent
+        kagenti.io/type: agent
+        protocol.kagenti.io/a2a: ""
+        app.kubernetes.io/name: deploy-agent
+    spec:
+      serviceAccountName: deploy-agent
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: deploy-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model deployment agent"
+            - name: AGENT_SKILLS
+              value: "model-deployment"
+            - name: AGENT_CAPABILITIES
+              value: "deploy:staging"
+            - name: AGENT_ENDPOINT
+              value: "http://deploy-agent.agentic-ml.svc.cluster.local:8000"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-registry
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: model-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-registry
+  template:
+    metadata:
+      labels:
+        app: model-registry
+        app.kubernetes.io/name: model-registry
+    spec:
+      serviceAccountName: model-registry
+      containers:
+        - name: registry
+          image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AUTH_MODE
+              value: "check-scope"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false

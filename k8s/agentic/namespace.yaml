@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-ml
+  labels:
+    demo: pytorch-conf-2026
+    mode: agentic
+    istio.io/dataplane-mode: ambient
+    istio-discovery: enabled
+    shared-gateway-access: "true"
+    kagenti-enabled: "true"

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: classic-ml
+  labels:
+    demo: pytorch-conf-2026
+    mode: classic

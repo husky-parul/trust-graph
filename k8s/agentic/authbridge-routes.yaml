@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authproxy-routes
+  namespace: agentic-ml
+data:
+  routes.yaml: |
+    - host: "model-registry"
+      target_audience: "model-registry"
+      token_scopes: "openid read:features write:model-registry"
+    - host: "data-agent"
+      target_audience: "data-agent"
+      token_scopes: "openid read:features"
+    - host: "training-agent"
+      target_audience: "training-agent"
+      token_scopes: "openid write:model-registry provision:gpu"
+    - host: "eval-agent"
+      target_audience: "eval-agent"
+      token_scopes: "openid read:test-data"
+    - host: "deploy-agent"
+      target_audience: "deploy-agent"
+      token_scopes: "openid deploy:staging"

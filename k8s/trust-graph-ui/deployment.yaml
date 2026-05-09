@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trust-graph-ui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trust-graph-ui
+  namespace: trust-graph-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trust-graph-ui
+  template:
+    metadata:
+      labels:
+        app: trust-graph-ui
+    spec:
+      containers:
+        - name: trust-graph-ui
+          image: registry.cr-system.svc.cluster.local:5000/trust-graph-ui:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+          env:
+            - name: KEYCLOAK_URL
+              value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
+            - name: JAEGER_URL
+              value: "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+            - name: KIALI_URL
+              value: "http://kiali.istio-system.svc.cluster.local:20001"
+            - name: NAMESPACE
+              value: "agentic-ml"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trust-graph-ui
+  namespace: trust-graph-ui
+spec:
+  selector:
+    app: trust-graph-ui
+  ports:
+    - port: 8090
+      targetPort: 8090

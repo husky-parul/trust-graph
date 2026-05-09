@@ -1,0 +1,265 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-agent
+  namespace: classic-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-agent
+  template:
+    metadata:
+      labels:
+        app: data-agent
+    spec:
+      serviceAccountName: ml-pipeline-sa
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: data-agent
+            - name: AGENT_DESCRIPTION
+              value: "Data loading and preprocessing agent"
+            - name: AGENT_SKILLS
+              value: "data-loading,preprocessing"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.classic-ml.svc.cluster.local:8080"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-agent
+  namespace: classic-ml
+spec:
+  selector:
+    app: data-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-agent
+  namespace: classic-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: training-agent
+  template:
+    metadata:
+      labels:
+        app: training-agent
+    spec:
+      serviceAccountName: ml-pipeline-sa
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: training-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model training agent"
+            - name: AGENT_SKILLS
+              value: "model-training"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.classic-ml.svc.cluster.local:8080"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-agent
+  namespace: classic-ml
+spec:
+  selector:
+    app: training-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eval-agent
+  namespace: classic-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: eval-agent
+  template:
+    metadata:
+      labels:
+        app: eval-agent
+    spec:
+      serviceAccountName: ml-pipeline-sa
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: eval-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model evaluation agent"
+            - name: AGENT_SKILLS
+              value: "model-evaluation"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eval-agent
+  namespace: classic-ml
+spec:
+  selector:
+    app: eval-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-agent
+  namespace: classic-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deploy-agent
+  template:
+    metadata:
+      labels:
+        app: deploy-agent
+    spec:
+      serviceAccountName: ml-pipeline-sa
+      containers:
+        - name: agent
+          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AGENT_NAME
+              value: deploy-agent
+            - name: AGENT_DESCRIPTION
+              value: "Model deployment agent"
+            - name: AGENT_SKILLS
+              value: "model-deployment"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deploy-agent
+  namespace: classic-ml
+spec:
+  selector:
+    app: deploy-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-registry
+  namespace: classic-ml
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: model-registry
+  template:
+    metadata:
+      labels:
+        app: model-registry
+    spec:
+      serviceAccountName: ml-pipeline-sa
+      containers:
+        - name: registry
+          image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AUTH_MODE
+              value: "none"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-registry
+  namespace: classic-ml
+spec:
+  selector:
+    app: model-registry
+  ports:
+    - port: 8080
+      targetPort: 8080
