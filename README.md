@@ -60,6 +60,30 @@ This repo implements the trust graph on [Kagenti](https://github.com/kagenti/kag
 
 A previous implementation ([trust-graph-dataplane](https://github.com/husky-parul/trust-graph-dataplane)) used Envoy sidecars with custom Lua filters and trust headers instead of Keycloak token exchange. The trust graph concept is the same; the infrastructure underneath changed.
 
+## Roadmap
+
+The current implementation captures **delegation** — who acted on behalf of whom, with what scopes. The following extensions are planned:
+
+### Intent propagation
+
+Today the trust graph records *what* an agent was allowed to do, but not *why*. Scopes say "read:features" — they don't say "for research purposes" or "for model retraining." We call this **loss of purpose**.
+
+**Plan:** Add `intendedUse` and `purpose` fields to A2A Agent Cards. Carry an `intent` field in task payloads, propagated through the delegation chain alongside the `act` claim. AuthBridge already intercepts every hop — it can log intent metadata alongside the token exchange. The trust graph UI would show intent at each edge, making purpose visible across the full chain.
+
+This builds on infrastructure we already have (Agent Cards, AuthBridge interception, token exchange events). No new components — it's metadata enrichment.
+
+### Signed attestations
+
+Keycloak TOKEN_EXCHANGE events are cryptographically grounded — the JWTs carrying `act` claims are signed by Keycloak's RSA key. But these are ephemeral tokens, not portable provenance records. You can't hand a JWT to an external auditor and say "prove this delegation happened."
+
+**Plan:** Wrap delegation events into [DSSE](https://github.com/secure-systems-lab/dsse) attestation envelopes — each binding actor identity, action, declared intent, scopes, and timestamp into a signed record. Log these to an append-only store for tamper-evident auditability. This is a lightweight path toward [Sigstore](https://sigstore.dev)-compatible attestation without requiring full Sigstore infrastructure (Fulcio, Rekor) in the cluster.
+
+### Persistent graph store
+
+The trust graph is currently built on-the-fly from event streams — Keycloak events and OTel spans are queried, correlated, and rendered into a DAG per request. Nothing persists. You can't ask "show me all delegations from last week" or "has this agent ever accessed that resource before."
+
+**Plan:** Persist delegation edges to a lightweight store (SQLite) as they arrive. This enables historical queries, baseline computation for anomaly detection (novel edges, capability overreach), and the explain/assess capabilities from the [trust-graph-dataplane](https://github.com/husky-parul/trust-graph-dataplane) lineage service. A production system might use a property graph (Neo4j, TerminusDB) for richer traversal queries; the demo uses SQLite to keep the component count low.
+
 ## Quick Start
 
 ```bash
