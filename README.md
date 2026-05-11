@@ -54,7 +54,7 @@ This repo implements the trust graph on [Kagenti](https://github.com/kagenti/kag
 - **Observation**: Three layers, none requiring agent code changes:
   - **Layer 1 — Keycloak events** (cryptographic, authoritative): Token exchange events record who delegated to whom, with what scopes, verified by signed JWTs. This is the trust graph's source of truth.
   - **Layer 2 — Istio/Envoy OTel spans** (infrastructure, not application-settable): Network-level call graph with latency, status codes, and call patterns.
-  - **Layer 3 — Agent runtime traces** (optional): MLflow/Langfuse traces showing LLM calls and tool invocations inside agents.
+  - **Layer 3 — Agent runtime traces**: MLflow/Langfuse traces showing LLM calls and tool invocations inside agents. Linked automatically via `traceparent` forwarded by the sidecar — zero agent instrumentation needed.
 - **Correlation**: AuthBridge is the bridge between layers. It sits in the request path where it sees both the Istio trace context (`traceparent`) and the Keycloak token exchange. By emitting OTel spans tagged with trust metadata (act claims, scopes, delegation chain) under the same trace ID, it gives the trust graph backend a single key to join all three layers into one DAG per request.
 - **Enforcement**: Downstream services (e.g., model-registry) inspect the scoped token and allow or deny operations. Scope narrowing at the Keycloak SPI layer prevents privilege escalation.
 

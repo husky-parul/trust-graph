@@ -1,6 +1,9 @@
 # Local Claude Code config
 .claude/settings.local.json
 
+# Plans
+*plan.md
+
 # Temporary files
 tmp/
 

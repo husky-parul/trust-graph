@@ -13,6 +13,14 @@ die() { echo "[setup] ERROR: $*" >&2; exit 1; }
 command -v kind >/dev/null || die "kind not found. Install: https://kind.sigs.k8s.io/"
 command -v kubectl >/dev/null || die "kubectl not found"
 command -v helm >/dev/null || die "helm not found"
+if ! command -v ansible-playbook >/dev/null; then
+  log "ansible-playbook not found — installing via pip..."
+  pip install ansible-core
+fi
+if ! ansible-galaxy collection list kubernetes.core &>/dev/null; then
+  log "kubernetes.core collection not found — installing..."
+  ansible-galaxy collection install kubernetes.core
+fi
 
 # --- Locate Kagenti repo ---
 if [[ -z "$KAGENTI_REPO" ]]; then
@@ -29,7 +37,17 @@ KAGENTI_INSTALLER="${KAGENTI_REPO}/deployments/ansible/run-install.sh"
 # --- Step 1: Install Kagenti platform via Ansible installer ---
 log "Step 1: Installing Kagenti platform (Ansible-based)..."
 log "  This creates a Kind cluster and deploys: Istio, SPIRE, Keycloak, OTel, Kiali, Kagenti operators"
-bash "${KAGENTI_INSTALLER}" --env dev
+# Detect container engine: prefer podman if available
+if command -v podman >/dev/null; then
+  CONTAINER_ENGINE="podman"
+  export KIND_EXPERIMENTAL_PROVIDER="${KIND_EXPERIMENTAL_PROVIDER:-podman}"
+elif command -v docker >/dev/null; then
+  CONTAINER_ENGINE="docker"
+else
+  die "Neither podman nor docker found"
+fi
+log "  Using container engine: ${CONTAINER_ENGINE}"
+bash "${KAGENTI_INSTALLER}" --env dev --extra-vars "{\"container_engine\": \"${CONTAINER_ENGINE}\"}"
 
 # --- Step 2: Build demo images ---
 log "Step 2: Building demo images..."
