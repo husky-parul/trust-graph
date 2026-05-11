@@ -340,7 +340,7 @@ The earlier prototypes (`/home/claude/trust-graph-otel`, `/home/claude/trust-gra
 1. **Ingress gateway** stamps immutable headers: `x-request-id` (becomes the `run_id`), `x-principal-id` (from OAuth token)
 2. **Envoy sidecars** mutate `x-caller-id` and `x-trust-hop-kind` at each outbound hop
 3. **Custom OTel tags** on every span: `trust.run_id`, `trust.source`, `trust.target`, `trust.hop_kind`, `trust.principal_id`
-4. **Lineage Service** queries Jaeger by `trust.run_id` → gets ALL spans for that request flow → builds the DAG from span attributes
+4. **Lineage Service** queries the trace backend by `trust.run_id` → gets ALL spans for that request flow → builds the DAG from span attributes
 
 No timestamp correlation needed. The `run_id` is the deterministic correlation key — all spans for one request share it. The DAG is built from `trust.source` / `trust.target` attributes, not from matching independent event sources.
 
@@ -474,7 +474,7 @@ OTel SDKs, Istio, and Envoy propagate both headers automatically. Agents using O
 | **Standards** | W3C standard — any OTel-aware component understands it | Baggage spec limits values to ASCII, URL-encoded, 8192 bytes total |
 | **Propagation** | Automatic through OTel SDK + Istio — zero config per agent | Requires OTel SDK in the agent runtime (or Istio auto-propagation) |
 | **Correlation** | Agent spans automatically share the same trace ID | If agent doesn't use OTel SDK, baggage is silently dropped |
-| **Ecosystem** | Works with Jaeger, Tempo, Zipkin, any OTel-compatible backend | Baggage is visible to every service in the chain — information leakage risk for sensitive metadata |
+| **Ecosystem** | Works with any OTel-compatible backend (Tempo, Jaeger, Zipkin) | Baggage is visible to every service in the chain — information leakage risk for sensitive metadata |
 | **Runtime linking** | Agent can read baggage to tag MLflow runs — one line of code | Istio ambient mode baggage propagation support varies by version |
 
 **Option B: Custom `x-trust-*` headers**
@@ -597,30 +597,30 @@ Currently: agents make plain HTTP calls with no interception. The trust graph ed
 
 **To fix:** Once AuthBridge sidecars are injected (#2), agent outbound calls will be intercepted. The pipeline script can then be replaced by actual agent-to-agent A2A calls through alice → Kagenti Backend → agents.
 
-### 6. No Jaeger / trace query backend — Layer 2 unqueryable
+### 6. No trace query backend — Layer 2 unqueryable
 
-OTel collector exists (`otel-collector.kagenti-system:4317/4318/8335`) but no Jaeger or Tempo for querying spans. The `observability` namespace is empty. Even if sidecars were emitting OTel spans, there's no query API to retrieve them.
+OTel collector exists (`otel-collector.kagenti-system:4317/4318/8335`) but no trace backend for querying spans. The `observability` namespace is empty. Even if sidecars were emitting OTel spans, there's no query API to retrieve them.
 
-The trust graph backend has code to query Jaeger (`get_service_spans()`) but it returns empty because Jaeger isn't deployed.
+The trust graph backend has code to query spans (`get_service_spans()`) but it returns empty because no trace backend is deployed.
 
-**To fix:** Deploy Jaeger (or Tempo) in the `observability` namespace, configure OTel collector to export to it, update trust graph backend's `JAEGER_URL` env var.
+**To fix:** Deploy Tempo (Red Hat's recommended trace backend, replacing Jaeger) in the `observability` namespace, configure OTel collector to export to it, update trust graph backend's `TRACE_BACKEND_URL` env var.
 
 ### 7. Trust Graph UI — architecture drift
 
 Plan says the backend correlates Layer 1 (Keycloak events) + Layer 2 (sidecar OTel spans) + Layer 3 (MLflow) via shared trace_id. Current backend:
 - Only queries Keycloak events (Layer 1)
-- Has stub code for Jaeger/Kiali queries that return empty
+- Has stub code for trace backend/Kiali queries that return empty
 - Does timestamp-based enrichment (the approach the plan explicitly criticizes)
 - No trace_id correlation, no per-run grouping
 - Token exchanges are merged by (source, target) pair across all sessions
 
-**To fix:** Once Jaeger is deployed (#6) and sidecars emit spans (#2), update backend to query spans by trace_id and group edges into runs.
+**To fix:** Once Tempo is deployed (#6) and sidecars emit spans (#2), update backend to query spans by trace_id and group edges into runs.
 
 ### Priority order
 
 1. Deploy Keycloak SPI (custom image) → act-claims + scope narrowing
 2. Create Agent CRs → AuthBridge sidecar injection
-3. Deploy Jaeger → Layer 2 span query capability
+3. Deploy Tempo → Layer 2 span query capability
 4. Switch to federated-jwt auth → cryptographic identity
 5. Update trust graph backend → trace_id correlation, per-run grouping
 
