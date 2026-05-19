@@ -42,12 +42,8 @@ kubectl apply -f "${REPO_ROOT}/k8s/agentic/sidecar-configmaps.yaml"
 # 2c. Environments ConfigMap (Keycloak credentials for client-registration sidecar)
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/environments-configmap.yaml"
 
-# 3. Services
-kubectl apply -f "${REPO_ROOT}/k8s/agentic/services.yaml"
-
-# 4. Deployments (agents + model-registry)
-# Kagenti webhook auto-injects AuthBridge sidecars for pods with kagenti.io/type=agent
-kubectl apply -f "${REPO_ROOT}/k8s/agentic/deployments.yaml"
+# 3. Agent CRs (operator creates Deployments, Services, and AgentCards)
+kubectl apply -f "${REPO_ROOT}/k8s/agentic/agent-crs.yaml"
 
 # 4b. Patch POD_IP into proxy-init (webhook doesn't inject it yet)
 for agent in data-agent training-agent eval-agent deploy-agent; do

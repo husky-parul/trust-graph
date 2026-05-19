@@ -5,7 +5,6 @@ metadata:
   labels:
     demo: pytorch-conf-2026
     mode: agentic
-    istio.io/dataplane-mode: ambient
     istio-discovery: enabled
     shared-gateway-access: "true"
     kagenti-enabled: "true"

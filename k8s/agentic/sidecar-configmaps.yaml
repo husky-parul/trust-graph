@@ -111,6 +111,14 @@ data:
                   domains: ["*"]
                   routes:
                   - match:
+                      prefix: "/.well-known/"
+                    route:
+                      cluster: local_app
+                    typed_per_filter_config:
+                      envoy.filters.http.ext_proc:
+                        "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExtProcPerRoute
+                        disabled: true
+                  - match:
                       prefix: "/"
                     route:
                       cluster: local_app
