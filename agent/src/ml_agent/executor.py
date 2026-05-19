@@ -9,6 +9,9 @@ from a2a.server.events.event_queue import EventQueue
 from a2a.server.tasks.task_updater import TaskUpdater
 from a2a.types import Part
 
+from ml_agent.a2a_client import A2AClient
+from ml_agent.llm_client import call_llm
+
 AGENT_NAME = os.environ.get("AGENT_NAME", "ml-agent")
 MODEL_REGISTRY_URL = os.environ.get("MODEL_REGISTRY_URL", "")
 DOWNSTREAM = os.environ.get("DOWNSTREAM", "")
@@ -77,15 +80,13 @@ def _get_identity(auth_header: str) -> dict:
 
 
 async def _call_downstream(url: str, auth_header: str) -> dict:
-    headers = {}
-    if auth_header:
-        headers["Authorization"] = auth_header
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, headers=headers, json={})
-            return {"url": url, "status": resp.status_code, "response": resp.json()}
-    except Exception as e:
-        return {"url": url, "status": 0, "error": str(e)}
+    """Call downstream agent using A2A JSON-RPC protocol."""
+    client = A2AClient(timeout=10.0)
+    return await client.send_message(
+        target_url=url,
+        message="",  # Empty message - agent processes based on skills
+        auth_header=auth_header,
+    )
 
 
 async def _try_model_registry_write(auth_header: str) -> dict | None:
@@ -128,13 +129,22 @@ class MLAgentExecutor(AgentExecutor):
 
         identity = _get_identity(auth_header)
 
-        result = {"agent": identity, "downstream_results": [], "model_registry_test": None}
+        # LLM reasoning step (Layer 3 runtime trace)
+        task_description = f"Process ML pipeline task for {identity.get('agent_name')}"
+        llm_response = await call_llm(task_description, identity)
+
+        result = {
+            "agent": identity,
+            "llm_reasoning": llm_response,
+            "downstream_results": [],
+            "model_registry_test": None,
+        }
 
         if DOWNSTREAM:
             for url in DOWNSTREAM.split(","):
                 url = url.strip()
                 if url:
-                    dr = await _call_downstream(url + "/api/run-pipeline", auth_header)
+                    dr = await _call_downstream(url, auth_header)
                     result["downstream_results"].append(dr)
 
         if MODEL_REGISTRY_URL:

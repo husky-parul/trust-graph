@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ml_agent.executor import MLAgentExecutor
+from ml_agent.tracing import setup_tracing
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "ml-agent")
 AGENT_DESCRIPTION = os.environ.get("AGENT_DESCRIPTION", f"ML Pipeline {AGENT_NAME}")
@@ -52,6 +53,9 @@ def build_agent_card() -> AgentCard:
 
 
 def main():
+    # Set up OpenTelemetry auto-instrumentation for Layer 3 traces
+    setup_tracing()
+
     card = build_agent_card()
     card_dict = MessageToDict(card, preserving_proto_field_name=True)
     executor = MLAgentExecutor()

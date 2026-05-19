@@ -49,6 +49,14 @@ fi
 log "  Using container engine: ${CONTAINER_ENGINE}"
 bash "${KAGENTI_INSTALLER}" --env dev --extra-vars "{\"container_engine\": \"${CONTAINER_ENGINE}\"}"
 
+# --- Step 1b: Fix inotify limits inside Kind node (Podman rootless shares host limits) ---
+log "Raising inotify limits on Kind node..."
+sudo sysctl -w fs.inotify.max_user_watches=1048576 fs.inotify.max_user_instances=8192
+kubectl rollout restart deployment -n kagenti-system kagenti-controller-manager || true
+kubectl rollout restart deployment -n kagenti-webhook-system kagenti-webhook-controller-manager || true
+kubectl rollout status deployment -n kagenti-system kagenti-controller-manager --timeout=120s || true
+kubectl rollout status deployment -n kagenti-webhook-system kagenti-webhook-controller-manager --timeout=120s || true
+
 # --- Step 2: Build demo images ---
 log "Step 2: Building demo images..."
 bash "${SCRIPT_DIR}/build-images.sh"

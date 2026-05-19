@@ -40,6 +40,15 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://data-agent.agentic-ml.svc.cluster.local:8000
+            # OpenTelemetry configuration for Layer 3 traces
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
             requests:
               cpu: 50m
@@ -95,6 +104,15 @@ spec:
               value: http://training-agent.agentic-ml.svc.cluster.local:8000
             - name: DOWNSTREAM
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
+            # OpenTelemetry configuration for Layer 3 traces
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
             requests:
               cpu: 50m
@@ -148,6 +166,15 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://eval-agent.agentic-ml.svc.cluster.local:8000
+            # OpenTelemetry configuration for Layer 3 traces
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
             requests:
               cpu: 50m
@@ -201,6 +228,15 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://deploy-agent.agentic-ml.svc.cluster.local:8000
+            # OpenTelemetry configuration for Layer 3 traces
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://jaeger.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
             requests:
               cpu: 50m

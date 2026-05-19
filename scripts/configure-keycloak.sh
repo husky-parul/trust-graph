@@ -170,7 +170,7 @@ create_dashboard_client() {
 create_demo_user() {
   log "Creating user: alice"
   kc_api POST "/${REALM}/users" \
-    "{\"username\":\"alice\",\"enabled\":true,\"email\":\"alice@example.com\",\"emailVerified\":true}"
+    "{\"username\":\"alice\",\"enabled\":true,\"email\":\"alice@demo.local\",\"emailVerified\":true,\"firstName\":\"Alice\",\"lastName\":\"Demo\"}"
 
   local user_id
   user_id=$(kc_api GET "/${REALM}/users?username=alice" | python3 -c "

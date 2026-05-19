@@ -9,6 +9,14 @@ dependencies = [
     "httpx>=0.28.0",
     "starlette>=1.0.0",
     "sse-starlette>=3.0.0",
+    # OpenTelemetry for Layer 3 runtime traces
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-instrumentation-httpx>=0.41b0",
+    "opentelemetry-instrumentation-starlette>=0.41b0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+    # LLM integration (mock mode by default)
+    "openai>=1.0.0",
 ]
 
 [project.scripts]
