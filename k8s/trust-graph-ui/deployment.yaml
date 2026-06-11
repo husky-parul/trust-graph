@@ -20,17 +20,15 @@ spec:
     spec:
       containers:
         - name: trust-graph-ui
-          image: registry.cr-system.svc.cluster.local:5000/trust-graph-ui:latest
+          image: ttg-registry:5000/trust-graph-ui:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8090
           env:
             - name: KEYCLOAK_URL
               value: "http://keycloak-service.keycloak.svc.cluster.local:8080"
-            - name: JAEGER_URL
-              value: "http://otel-collector.kagenti-system.svc.cluster.local:8335"
-            - name: KIALI_URL
-              value: "http://kiali.istio-system.svc.cluster.local:20001"
+            - name: TEMPO_URL
+              value: "http://tempo.observability.svc.cluster.local:3200"
             - name: NAMESPACE
               value: "agentic-ml"
 ---

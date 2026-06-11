@@ -8,12 +8,10 @@ log() { echo "[deploy-agentic] $*"; }
 
 log "Deploying agentic ML pipeline (individual identities, AuthBridge, scope narrowing)..."
 
-REGISTRY_PREFIX="registry.cr-system.svc.cluster.local:5000"
-
 # 0. Replace stock Keycloak with custom SPI image (act-claim injection + scope narrowing)
 log "Patching Keycloak with agentic SPI image..."
 kubectl patch statefulset -n keycloak keycloak --type='json' -p="[
-  {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/image\",\"value\":\"${REGISTRY_PREFIX}/keycloak-agentic-spi:latest\"},
+  {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/image\",\"value\":\"ttg-registry:5000/keycloak-agentic-spi:latest\"},
   {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/imagePullPolicy\",\"value\":\"Always\"}
 ]"
 # Add KC_FEATURES if not already present
@@ -36,30 +34,29 @@ kubectl apply -f "${REPO_ROOT}/k8s/agentic/rbac.yaml"
 # 2. AuthBridge routes ConfigMap
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/authbridge-routes.yaml"
 
-# 2b. Sidecar ConfigMaps (envoy, spiffe-helper, authbridge)
+# 2b. Sidecar ConfigMaps (envoy, spiffe-helper, authbridge-config)
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/sidecar-configmaps.yaml"
 
 # 2c. Environments ConfigMap (Keycloak credentials for client-registration sidecar)
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/environments-configmap.yaml"
 
-# 3. Agent CRs (operator creates Deployments, Services, and AgentCards)
-kubectl apply -f "${REPO_ROOT}/k8s/agentic/agent-crs.yaml"
+# 3. Services (needed before Agent CRs so the operator can resolve endpoints)
+kubectl apply -f "${REPO_ROOT}/k8s/agentic/services.yaml"
 
-# 4b. Patch POD_IP into proxy-init (webhook doesn't inject it yet)
-for agent in data-agent training-agent eval-agent deploy-agent; do
-  kubectl patch deployment -n agentic-ml "$agent" --type='json' \
-    -p='[{"op":"add","path":"/spec/template/spec/initContainers/0/env/-","value":{"name":"POD_IP","valueFrom":{"fieldRef":{"fieldPath":"status.podIP"}}}}]' 2>/dev/null || true
-done
+# 4. Agent CRs — operator creates Deployments with AuthBridge sidecars injected
+log "Applying Agent CRs (operator handles Deployments + sidecar injection)..."
+kubectl apply -f "${REPO_ROOT}/k8s/agentic/agent-crs.yaml"
 
 # 5. Wait for pods
 log "Waiting for pods..."
-kubectl wait --for=condition=ready pod -l app -n agentic-ml --timeout=180s || true
+for agent in data-agent training-agent eval-agent deploy-agent model-registry; do
+  kubectl rollout status deployment/"$agent" -n agentic-ml --timeout=180s || true
+done
 
 # 6. Configure Keycloak (realm, clients, scopes)
 log "Configuring Keycloak..."
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://keycloak-service.keycloak.svc.cluster.local:8080}"
 
-# Run configure-keycloak.sh from inside the cluster via a job
 kubectl run keycloak-config --rm -i --restart=Never \
   --image=python:3.12-slim \
   -n agentic-ml \
@@ -73,9 +70,9 @@ kubectl run keycloak-config --rm -i --restart=Never \
     log "WARNING: Keycloak configuration job failed. You may need to run configure-keycloak.sh manually."
   }
 
-log "Agentic namespace deployed"
-kubectl get pods -n agentic-ml
-
-# 7. Check AgentCard CRDs (created by Kagenti operator)
+# 7. Check AgentCards (created by operator from Agent CRs)
 log "Checking AgentCards..."
 kubectl get agentcards -n agentic-ml 2>/dev/null || log "AgentCard CRDs not yet available (operator may still be syncing)"
+
+log "Agentic namespace deployed"
+kubectl get pods -n agentic-ml

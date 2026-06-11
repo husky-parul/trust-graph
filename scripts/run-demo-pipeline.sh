@@ -1,92 +1,98 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Simulates the ML pipeline token exchange flow:
-#   Alice → data-agent → training-agent → model-registry
-#                       → eval-agent     → deploy-agent
+# Triggers a real ML pipeline flow through AuthBridge sidecars:
+#   Alice token → data-agent → (AuthBridge token exchange) → downstream agents
 #
-# Each arrow is a Keycloak TOKEN_EXCHANGE event that the trust graph UI picks up.
-# Run this script to populate the trust graph with edges.
+# Runs entirely inside the cluster (kubectl exec into the agent pod).
+# Real TOKEN_EXCHANGE events appear in Keycloak.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NAMESPACE="${NAMESPACE:-agentic-ml}"
+KC_NAMESPACE="${KC_NAMESPACE:-keycloak}"
+ENTRY_AGENT="${ENTRY_AGENT:-data-agent}"
 
 log() { echo "[demo-pipeline] $*"; }
+err() { echo "[demo-pipeline] ERROR: $*" >&2; }
 
-PIPELINE_SCRIPT='
-import httpx, json, base64, asyncio, sys
+log "Running pipeline via $ENTRY_AGENT..."
+kubectl exec -n "$NAMESPACE" "deploy/$ENTRY_AGENT" -c agent -- \
+    python3 -c "
+import httpx, json, sys, os
 
-KC = "http://keycloak-service.keycloak.svc.cluster.local:8080"
-AGENTS = ["data-agent", "training-agent", "eval-agent", "deploy-agent", "model-registry"]
+KC = 'http://keycloak-service.$KC_NAMESPACE.svc.cluster.local:8080'
+ENTRY = 'http://$ENTRY_AGENT.$NAMESPACE.svc.cluster.local:8000'
 
-def decode_jwt(token):
-    payload = token.split(".")[1]
-    payload += "=" * (4 - len(payload) % 4)
-    return json.loads(base64.urlsafe_b64decode(payload))
+r = httpx.post(KC + '/realms/demo/protocol/openid-connect/token',
+    data={'grant_type': 'password', 'client_id': 'demo-dashboard',
+          'username': 'alice', 'password': 'demo'}, timeout=10)
+d = r.json()
+if 'access_token' not in d:
+    print('Alice login failed: ' + str(d.get('error_description', d)), file=sys.stderr)
+    sys.exit(1)
+token = d['access_token']
+print('Alice logged in', flush=True)
 
-async def main():
-    async with httpx.AsyncClient(timeout=10) as c:
-        # Get admin token + client secrets
-        r = await c.post(f"{KC}/realms/master/protocol/openid-connect/token",
-            data={"grant_type":"password","client_id":"admin-cli","username":"admin","password":"admin"})
-        admin_token = r.json()["access_token"]
-        h = {"Authorization": f"Bearer {admin_token}"}
+print('Sending A2A request to $ENTRY_AGENT...', flush=True)
+try:
+    r = httpx.post(ENTRY + '/message:send',
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            'A2A-Version': '1.0',
+        },
+        json={
+            'message': {
+                'message_id': 'demo-pipeline-1',
+                'role': 'ROLE_USER',
+                'parts': [{'text': 'Run the ML pipeline: load data, train model, evaluate, deploy'}],
+            },
+            'metadata': {'visited': ''},
+        },
+        timeout=60)
+    print('Response (HTTP ' + str(r.status_code) + '):', flush=True)
+    try:
+        print(json.dumps(r.json(), indent=2))
+    except Exception:
+        print(r.text)
+except Exception as e:
+    print('Request failed: ' + str(e), file=sys.stderr)
+    sys.exit(1)
+" 2>&1
 
-        secrets = {}
-        for agent in AGENTS:
-            r = await c.get(f"{KC}/admin/realms/demo/clients?clientId={agent}", headers=h)
-            uuid = r.json()[0]["id"]
-            r = await c.get(f"{KC}/admin/realms/demo/clients/{uuid}/client-secret", headers=h)
-            secrets[agent] = r.json()["value"]
+echo
 
-        # Alice logs in
-        r = await c.post(f"{KC}/realms/demo/protocol/openid-connect/token",
-            data={"grant_type":"password","client_id":"demo-dashboard","username":"alice","password":"demo"})
-        d = r.json()
-        if "access_token" not in d:
-            print(f"Alice login failed: {d.get(\"error_description\", d)}", file=sys.stderr)
-            sys.exit(1)
-        alice_token = d["access_token"]
-        print("Alice logged in")
+# Check for TOKEN_EXCHANGE events
+log "Checking Keycloak for TOKEN_EXCHANGE events..."
+sleep 2
 
-        async def exchange(src, src_token, dst, scopes):
-            r = await c.post(f"{KC}/realms/demo/protocol/openid-connect/token", data={
-                "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-                "client_id": src, "client_secret": secrets[src],
-                "subject_token": src_token,
-                "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
-                "audience": dst, "scope": scopes
-            })
-            d = r.json()
-            if "access_token" in d:
-                claims = decode_jwt(d["access_token"])
-                print(f"  {src} -> {dst}  [scopes: {scopes}]")
-                return d["access_token"]
-            else:
-                print(f"  {src} -> {dst}  FAILED: {d.get(\"error_description\", d)}", file=sys.stderr)
-                return None
+# kcadm needs auth first
+kubectl exec -n "$KC_NAMESPACE" keycloak-0 -- \
+    /opt/keycloak/bin/kcadm.sh config credentials \
+    --server http://localhost:8080 --realm master \
+    --user admin --password admin 2>/dev/null
 
-        # ML pipeline flow
-        print("Running pipeline token exchanges:")
+EVENTS=$(kubectl exec -n "$KC_NAMESPACE" keycloak-0 -- \
+    /opt/keycloak/bin/kcadm.sh get events -r demo \
+    -q 'type=TOKEN_EXCHANGE' --offset 0 --limit 20 2>/dev/null)
 
-        # data-agent gets token from Alice, calls training-agent
-        t1 = await exchange("data-agent", alice_token, "training-agent", "write:model-registry provision:gpu")
+EVENT_COUNT=$(echo "$EVENTS" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 
-        # training-agent writes to model-registry
-        if t1:
-            await exchange("training-agent", t1, "model-registry", "write:model-registry")
+if [[ "$EVENT_COUNT" -gt 0 ]]; then
+    log "Found $EVENT_COUNT TOKEN_EXCHANGE events:"
+    echo "$EVENTS" | python3 -c "
+import sys, json
+events = json.load(sys.stdin)
+for e in events:
+    details = e.get('details', {})
+    src = e.get('clientId', '?')
+    aud = details.get('audience', '?')
+    scope = details.get('token_exchange_scope', details.get('scope', '?'))
+    print(f'  {src} -> {aud}  [scopes: {scope}]')
+" 2>/dev/null || echo "$EVENTS"
+else
+    log "No TOKEN_EXCHANGE events found."
+    log "AuthBridge may not be performing token exchange on outbound calls."
+fi
 
-        # data-agent also calls eval-agent
-        t2 = await exchange("data-agent", alice_token, "eval-agent", "read:test-data")
-
-        # eval-agent triggers deploy-agent
-        if t2:
-            await exchange("eval-agent", t2, "deploy-agent", "deploy:staging")
-
-        print()
-        print("Done. Check the trust graph UI for edges.")
-
-asyncio.run(main())
-'
-
-log "Running ML pipeline token exchange flow..."
-kubectl exec -n trust-graph-ui deploy/trust-graph-ui -- python3 -c "$PIPELINE_SCRIPT" 2>&1
+echo
+log "Done."

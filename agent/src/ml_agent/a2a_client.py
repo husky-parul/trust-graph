@@ -1,11 +1,11 @@
 """A2A JSON-RPC 2.0 client for agent-to-agent communication."""
 
+from typing import Any, Dict, List
+
 import httpx
-from typing import Dict, Any
 
 
 class A2AClient:
-    """Minimal A2A client for sending JSON-RPC 2.0 requests to other agents."""
 
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
@@ -15,32 +15,30 @@ class A2AClient:
         target_url: str,
         message: str = "",
         auth_header: str = "",
+        visited: List[str] | None = None,
     ) -> Dict[str, Any]:
-        """
-        Send A2A JSON-RPC 2.0 request to target agent.
+        endpoint = f"{target_url}/message:send"
 
-        Args:
-            target_url: Base URL of target agent (e.g., http://training-agent:8000)
-            message: Text message to send (optional, can be empty for pipeline triggers)
-            auth_header: Authorization header to forward (traceparent auto-propagated by httpx instrumentation)
-
-        Returns:
-            Dict with status, response, or error
-        """
-        endpoint = f"{target_url}/api/run-pipeline"
-
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "A2A-Version": "1.0",
+        }
         if auth_header:
             headers["Authorization"] = auth_header
 
-        # A2A JSON-RPC 2.0 request format
-        # For now, minimal payload - agents auto-process based on their skills
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "run",
-            "params": {"message": message} if message else {},
-            "id": 1,
+        metadata: Dict[str, str] = {}
+        if visited:
+            metadata["visited"] = ",".join(visited)
+
+        payload: Dict[str, Any] = {
+            "message": {
+                "message_id": f"{target_url}-{id(self)}",
+                "role": "ROLE_USER",
+                "parts": [{"text": message or "run pipeline"}],
+            },
         }
+        if metadata:
+            payload["metadata"] = metadata
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:

@@ -30,6 +30,40 @@ metadata:
   namespace: agentic-ml
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agentcard-reader
+  namespace: agentic-ml
+rules:
+  - apiGroups: ["agent.kagenti.dev"]
+    resources: ["agentcards", "agents"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agents-read-agentcards
+  namespace: agentic-ml
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agentcard-reader
+subjects:
+  - kind: ServiceAccount
+    name: data-agent
+  - kind: ServiceAccount
+    name: training-agent
+  - kind: ServiceAccount
+    name: eval-agent
+  - kind: ServiceAccount
+    name: deploy-agent
+  - kind: ServiceAccount
+    name: model-registry
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: oidc-discovery-public

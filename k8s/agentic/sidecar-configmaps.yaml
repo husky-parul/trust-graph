@@ -182,7 +182,13 @@ metadata:
   name: authbridge-config
   namespace: agentic-ml
 data:
-  TOKEN_URL: "http://keycloak-service.keycloak.svc:8080/realms/demo/protocol/openid-connect/token"
-  ISSUER: "http://keycloak-service.keycloak.svc:8080/realms/demo"
-  TARGET_AUDIENCE: "auth-target"
-  TARGET_SCOPES: "openid auth-target-aud"
+  KEYCLOAK_URL: "http://keycloak-service.keycloak.svc:8080"
+  KEYCLOAK_REALM: "demo"
+  KEYCLOAK_NAMESPACE: "keycloak"
+  ISSUER: "http://keycloak.localtest.me:8080/realms/demo"
+  SPIRE_ENABLED: "true"
+  CLIENT_AUTH_TYPE: "federated-jwt"
+  SPIFFE_IDP_ALIAS: "spire-spiffe"
+  JWT_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
+  EXPECTED_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
+  CREDENTIAL_WAIT_TIMEOUT: "120s"
