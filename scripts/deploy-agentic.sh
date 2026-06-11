@@ -4,6 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+KAGENTI_REPO="${KAGENTI_REPO:-}"
+if [[ -z "$KAGENTI_REPO" ]]; then
+  if [[ -d "${REPO_ROOT}/../kagenti" ]]; then
+    KAGENTI_REPO="${REPO_ROOT}/../kagenti"
+  fi
+fi
+
 log() { echo "[deploy-agentic] $*"; }
 
 log "Deploying agentic ML pipeline (individual identities, AuthBridge, scope narrowing)..."
