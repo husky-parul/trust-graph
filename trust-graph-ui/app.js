@@ -401,7 +401,11 @@ function renderEventPills() {
 function updateTopBar() {
   if (!graphData) return;
   const runIdEl = document.getElementById("run-id");
-  if (graphData.event_ids && graphData.event_ids.length > 0) {
+  if (graphData._run_id) {
+    runIdEl.textContent = `Run: ${graphData._run_id}`;
+  } else if (graphData._scoped) {
+    runIdEl.textContent = `Pipeline Run (${graphData.event_ids.length} events)`;
+  } else if (graphData.event_ids && graphData.event_ids.length > 0) {
     runIdEl.textContent = graphData.event_ids[0];
   } else {
     runIdEl.textContent = "latest";
@@ -412,10 +416,28 @@ function updateTopBar() {
   document.getElementById("badge-score").textContent = `Score: ${score}`;
 }
 
-async function fetchData() {
+async function fetchData(eventIdsOrTraceId, _retries) {
   try {
-    const resp = await fetch("/api/trust-graph");
+    let url = "/api/trust-graph";
+    let scoped = false;
+    let traceId = null;
+    if (typeof eventIdsOrTraceId === "string") {
+      traceId = eventIdsOrTraceId;
+      url += "?trace_id=" + encodeURIComponent(eventIdsOrTraceId);
+      scoped = true;
+    } else if (eventIdsOrTraceId && eventIdsOrTraceId.length > 0) {
+      url += "?event_ids=" + encodeURIComponent(eventIdsOrTraceId.join(","));
+      scoped = true;
+    }
+    const resp = await fetch(url);
     graphData = await resp.json();
+    graphData._scoped = scoped;
+
+    if (traceId && (!graphData.edges || graphData.edges.length === 0) && (_retries || 0) < 3) {
+      setTimeout(() => fetchData(eventIdsOrTraceId, (_retries || 0) + 1), 3000);
+      return;
+    }
+
     document.getElementById("badge-alive").classList.remove("dead");
     document.getElementById("badge-alive").textContent = "ALIVE";
     updateTopBar();
@@ -447,9 +469,39 @@ document.querySelectorAll('.page-tab').forEach(tab => {
   tab.addEventListener('click', () => switchPage(tab.dataset.page));
 });
 
-document.getElementById("btn-load").addEventListener("click", fetchData);
+document.getElementById("btn-load").addEventListener("click", () => fetchData());
 document.getElementById("detail-close").addEventListener("click", hideDetailPanel);
 document.getElementById("btn-print").addEventListener("click", () => window.print());
+
+document.getElementById("btn-search").addEventListener("click", searchByRunId);
+document.getElementById("search-run-id").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") searchByRunId();
+});
+
+function searchByRunId() {
+  const input = document.getElementById("search-run-id");
+  const val = input.value.trim();
+  if (!val) return;
+  fetchDataByRunId(val);
+}
+
+async function fetchDataByRunId(runId) {
+  try {
+    const url = "/api/trust-graph?run_id=" + encodeURIComponent(runId);
+    const resp = await fetch(url);
+    graphData = await resp.json();
+    graphData._scoped = true;
+    graphData._run_id = runId;
+    document.getElementById("badge-alive").classList.remove("dead");
+    document.getElementById("badge-alive").textContent = "ALIVE";
+    updateTopBar();
+    renderEventPills();
+    renderGraph();
+  } catch (e) {
+    document.getElementById("badge-alive").classList.add("dead");
+    document.getElementById("badge-alive").textContent = "DOWN";
+  }
+}
 
 document.querySelectorAll(".tab").forEach(tab => {
   tab.addEventListener("click", () => setActiveTab(tab.dataset.tab));
@@ -457,4 +509,4 @@ document.querySelectorAll(".tab").forEach(tab => {
 
 window.addEventListener("resize", () => { if (graphData) renderGraph(); });
 
-fetchData();
+// Start with empty graph — user searches by run ID or clicks "View in Trust Graph"

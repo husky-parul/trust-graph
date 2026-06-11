@@ -1,23 +1,24 @@
 import json
 import os
+import secrets
+import sqlite3
 from collections import defaultdict
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak-service.keycloak.svc.cluster.local:8080")
 KEYCLOAK_ADMIN = os.environ.get("KEYCLOAK_ADMIN", "admin")
 KEYCLOAK_ADMIN_PASSWORD = os.environ.get("KEYCLOAK_ADMIN_PASSWORD", "admin")
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "demo")
-JAEGER_URL = os.environ.get("JAEGER_URL", "http://jaeger.observability.svc.cluster.local:16686")
-KIALI_URL = os.environ.get("KIALI_URL", "http://kiali.istio-system.svc.cluster.local:20001")
 NAMESPACE = os.environ.get("NAMESPACE", "agentic-ml")
 BACKEND_CLIENT_ID = os.environ.get("BACKEND_CLIENT_ID", "trust-graph-ui")
 BACKEND_CLIENT_SECRET = os.environ.get("BACKEND_CLIENT_SECRET", "trust-graph-ui-secret")
+DB_PATH = os.environ.get("DB_PATH", "/tmp/trust_graph.db")
 
 app = FastAPI(title="Trust Graph UI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -37,6 +38,140 @@ CAPABILITY_SCOPES = {
     "read:features", "write:model-registry", "provision:gpu",
     "read:test-data", "write:eval-reports", "deploy:staging",
 }
+
+SPIFFE_PREFIX = f"spiffe://localtest.me/ns/{NAMESPACE}/sa/"
+KNOWN_AGENTS = set(AGENTS)
+
+
+# --- SQLite ---
+
+def _get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db():
+    conn = _get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            run_id TEXT PRIMARY KEY,
+            trace_id TEXT UNIQUE NOT NULL,
+            pipeline TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS trust_spans (
+            span_id TEXT PRIMARY KEY,
+            trace_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            target TEXT NOT NULL,
+            hop_kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            scopes TEXT,
+            principal TEXT,
+            timestamp TEXT NOT NULL,
+            raw_attributes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_trust_spans_trace ON trust_spans(trace_id);
+    """)
+    conn.commit()
+    conn.close()
+
+
+@app.on_event("startup")
+async def _startup():
+    _init_db()
+
+
+# --- OTLP Receiver ---
+
+@app.post("/v1/traces")
+async def receive_traces(request: Request):
+    """Receive OTLP JSON spans from AuthBridge and store trust-relevant ones in SQLite."""
+    body = await request.json()
+    conn = _get_db()
+    stored = 0
+    try:
+        for rs in body.get("resourceSpans", []):
+            for ss in rs.get("scopeSpans", []):
+                for span in ss.get("spans", []):
+                    attrs = {}
+                    raw_attrs = span.get("attributes", [])
+                    if isinstance(raw_attrs, dict):
+                        attrs = {k: str(v) for k, v in raw_attrs.items()}
+                    else:
+                        for a in raw_attrs:
+                            val = a.get("value", {})
+                            attrs[a["key"]] = (
+                                val.get("stringValue")
+                                or val.get("intValue")
+                                or val.get("boolValue", "")
+                            )
+
+                    if not any(k.startswith("trust.") for k in attrs):
+                        continue
+
+                    scopes_raw = attrs.get("trust.scopes", "")
+                    scopes_list = [s for s in scopes_raw.split() if s] if scopes_raw else []
+
+                    conn.execute(
+                        """INSERT OR REPLACE INTO trust_spans
+                           (span_id, trace_id, source, target, hop_kind, status,
+                            scopes, principal, timestamp, raw_attributes)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            span.get("spanId", ""),
+                            span.get("traceId", ""),
+                            _normalize_id(attrs.get("trust.source", "")),
+                            _normalize_id(attrs.get("trust.target", "")),
+                            attrs.get("trust.hop_kind", ""),
+                            attrs.get("trust.status", "authenticated"),
+                            json.dumps(scopes_list),
+                            attrs.get("trust.principal", ""),
+                            span.get("startTimeUnixNano", ""),
+                            json.dumps(attrs),
+                        ),
+                    )
+                    stored += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return JSONResponse(content={"stored": stored})
+
+
+def _normalize_id(raw: str) -> str:
+    """Strip SPIFFE prefix to get short agent name."""
+    if raw.startswith(SPIFFE_PREFIX):
+        return raw[len(SPIFFE_PREFIX):]
+    return raw
+
+def _extract_target(audience_str: str, source: str) -> str | None:
+    """Extract the actual exchange target from the audience field.
+
+    The audience field can be a single value (clean) or a space-separated
+    list of all aud claims (noisy). We look for the requested target by
+    finding SPIFFE IDs that aren't the source, falling back to short names.
+    """
+    parts = audience_str.split()
+    if len(parts) == 1:
+        return _normalize_id(parts[0])
+
+    spiffe_targets = [
+        _normalize_id(p) for p in parts
+        if p.startswith("spiffe://") and _normalize_id(p) != source
+    ]
+    if len(spiffe_targets) == 1:
+        return spiffe_targets[0]
+
+    short_targets = [
+        p for p in parts
+        if not p.startswith("spiffe://") and p in KNOWN_AGENTS and p != source
+    ]
+    if len(short_targets) == 1:
+        return short_targets[0]
+
+    return None
 
 def _filter_scopes(scopes: list[str]) -> list[str]:
     return [s for s in scopes if s in CAPABILITY_SCOPES]
@@ -84,19 +219,25 @@ def build_trust_dag(kc_events: list[dict]) -> tuple[list[dict], list[str]]:
     event_ids: list[str] = []
 
     for event in kc_events:
-        client_id = event.get("clientId", "")
+        raw_client = event.get("clientId", "")
         details = event.get("details", {})
-        audience = details.get("audience", "")
+        raw_audience = details.get("audience", "")
         scope = details.get("scope", "")
         kc_time = event.get("time", 0)
         username = details.get("username", "")
         event_id = event.get("id", "")
 
-        if not client_id or not audience:
+        if not raw_client or not raw_audience:
             continue
 
         event_ids.append(event_id)
-        key = (client_id, audience)
+        source = _normalize_id(raw_client)
+        target = _extract_target(raw_audience, source)
+
+        if not target or target == source:
+            continue
+
+        key = (source, target)
         scopes_granted = _filter_scopes(scope.split() if scope else [])
 
         if key in edge_map:
@@ -112,8 +253,8 @@ def build_trust_dag(kc_events: list[dict]) -> tuple[list[dict], list[str]]:
                     e["scopes_granted"].append(s)
         else:
             edge_map[key] = {
-                "source": client_id,
-                "target": audience,
+                "source": source,
+                "target": target,
                 "scopes_granted": scopes_granted,
                 "status": "authenticated",
                 "hop_kind": "token_exchange",
@@ -124,9 +265,8 @@ def build_trust_dag(kc_events: list[dict]) -> tuple[list[dict], list[str]]:
                 "live": True,
             }
 
-        sub_client = details.get("subject_token_client_id", "")
-        if username and sub_client == "demo-dashboard":
-            user_delegates.add((username, client_id))
+        if username and source == "trust-graph-ui":
+            user_delegates.add((username, source))
 
     edges = []
     for e in edge_map.values():
@@ -134,10 +274,10 @@ def build_trust_dag(kc_events: list[dict]) -> tuple[list[dict], list[str]]:
         e["last_seen"] = _ts_to_iso(e.pop("_last_ts"))
         edges.append(e)
 
-    for username, agent in user_delegates:
+    for username, backend in user_delegates:
         edges.append({
             "source": username,
-            "target": agent,
+            "target": backend,
             "scopes_granted": ["*"],
             "status": "authenticated",
             "hop_kind": "principal_to_agent",
@@ -151,112 +291,69 @@ def build_trust_dag(kc_events: list[dict]) -> tuple[list[dict], list[str]]:
     return edges, event_ids
 
 
-async def get_service_spans() -> list[dict]:
-    spans = []
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            for agent in AGENTS:
-                resp = await client.get(
-                    f"{JAEGER_URL}/api/traces",
-                    params={"service": agent, "limit": "50", "lookback": "5m"},
-                )
-                if resp.status_code != 200:
-                    continue
-                for trace in resp.json().get("data", []):
-                    for span in trace.get("spans", []):
-                        tags = {t["key"]: t.get("value", "") for t in span.get("tags", [])}
-                        spans.append({
-                            "trace_id": trace.get("traceID", ""),
-                            "span_id": span.get("spanID", ""),
-                            "operation": span.get("operationName", ""),
-                            "source": tags.get("trust.source", tags.get("source.workload", "")),
-                            "destination": tags.get("trust.target", tags.get("upstream_cluster", "")),
-                            "http_status": int(tags.get("http.status_code", 0)),
-                            "duration_us": span.get("duration", 0),
-                            "timestamp_us": span.get("startTime", 0),
-                            "trust_tags": {k: v for k, v in tags.items() if k.startswith("trust.")},
-                        })
-    except Exception:
-        pass
-    return spans
+def build_trust_dag_from_spans(spans: list[sqlite3.Row]) -> tuple[list[dict], list[str]]:
+    """Build trust DAG from AuthBridge OTel spans stored in SQLite."""
+    edge_map: dict[tuple[str, str], dict] = {}
+    user_delegates: set[tuple[str, str]] = set()
+    span_ids: list[str] = []
 
+    for span in spans:
+        source = _normalize_id(span["source"])
+        target = _normalize_id(span["target"])
+        sid = span["span_id"]
+        hop_kind = span["hop_kind"]
+        status = span["status"]
+        scopes = json.loads(span["scopes"]) if span["scopes"] else []
+        principal = span["principal"]
+        ts = span["timestamp"]
 
-async def get_kiali_edges() -> list[dict]:
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{KIALI_URL}/kiali/api/namespaces/{NAMESPACE}/graph",
-                params={"graphType": "workload", "duration": "60s"},
-            )
-            if resp.status_code != 200:
-                return []
-            graph = resp.json()
-            node_map = {}
-            for node in graph.get("elements", {}).get("nodes", []):
-                data = node.get("data", {})
-                node_map[data.get("id", "")] = data.get("workload", data.get("app", ""))
-            edges = []
-            for edge in graph.get("elements", {}).get("edges", []):
-                data = edge.get("data", {})
-                src = node_map.get(data.get("source", ""), "")
-                dst = node_map.get(data.get("target", ""), "")
-                if src and dst:
-                    edges.append({
-                        "source": src, "destination": dst, "http_status": 200,
-                        "request_count": data.get("traffic", {}).get("rates", {}).get("http", 0),
-                        "aggregated": True,
-                    })
-            return edges
-    except Exception:
-        return []
-
-
-def _workload_matches(workload_name: str, client_id: str) -> bool:
-    if not workload_name or not client_id:
-        return False
-    return client_id in workload_name or workload_name.startswith(client_id)
-
-
-def enrich_and_detect(trust_edges: list[dict], spans: list[dict], kiali_edges: list[dict]) -> list[dict]:
-    all_edges = list(trust_edges)
-    network_sources = spans if spans else kiali_edges
-
-    for edge in all_edges:
-        for span in network_sources:
-            src = span.get("source", "")
-            dst = span.get("destination", "")
-            if _workload_matches(src, edge["source"]) and _workload_matches(dst, edge["target"]):
-                edge["http_status"] = span.get("http_status")
-                edge["duration_us"] = span.get("duration_us")
-                edge["trace_id"] = span.get("trace_id")
-                if span.get("http_status") == 403:
-                    edge["status"] = "denied"
-                    edge["scopes_granted"] = []
-                break
-
-    authenticated_pairs = {(e["source"], e["target"]) for e in trust_edges}
-    for span in network_sources:
-        src = span.get("source", "")
-        dst = span.get("destination", "")
-        if not src or not dst:
+        if not source or not target:
             continue
-        matched = any(
-            _workload_matches(src, kc_src) and _workload_matches(dst, kc_dst)
-            for kc_src, kc_dst in authenticated_pairs
-        )
-        if not matched and src in AGENTS and dst in AGENTS:
-            all_edges.append({
-                "source": src, "target": dst,
-                "scopes_granted": [], "status": "unauthenticated",
-                "hop_kind": "network", "call_count": 1, "event_ids": [],
-                "first_seen": "", "last_seen": "",
-                "timestamp": span.get("timestamp_us", 0) // 1000,
-                "http_status": span.get("http_status"),
-                "trace_id": span.get("trace_id"),
-                "live": True,
-            })
 
-    return all_edges
+        span_ids.append(sid)
+        key = (source, target)
+        filtered_scopes = _filter_scopes(scopes)
+
+        if key in edge_map:
+            e = edge_map[key]
+            e["call_count"] += 1
+            e["event_ids"].append(sid)
+            for s in filtered_scopes:
+                if s not in e["scopes_granted"]:
+                    e["scopes_granted"].append(s)
+        else:
+            edge_map[key] = {
+                "source": source,
+                "target": target,
+                "scopes_granted": filtered_scopes,
+                "status": status,
+                "hop_kind": hop_kind,
+                "call_count": 1,
+                "event_ids": [sid],
+                "first_seen": ts,
+                "last_seen": ts,
+                "live": True,
+            }
+
+        if principal and source == "trust-graph-ui":
+            user_delegates.add((principal, source))
+
+    edges = list(edge_map.values())
+    for username, backend in user_delegates:
+        edges.append({
+            "source": username,
+            "target": backend,
+            "scopes_granted": ["*"],
+            "status": "authenticated",
+            "hop_kind": "principal_to_agent",
+            "call_count": 1,
+            "event_ids": [],
+            "first_seen": "",
+            "last_seen": "",
+            "live": True,
+        })
+
+    return edges, span_ids
 
 
 def compute_paths(edges: list[dict], nodes: list[dict]) -> dict[str, list[list[str]]]:
@@ -302,43 +399,97 @@ def generate_explanations(paths: dict[str, list[list[str]]], nodes: list[dict]) 
 
 
 @app.get("/api/trust-graph")
-async def trust_graph():
-    kc_events = await get_token_exchange_events()
-    trust_edges, event_ids = build_trust_dag(kc_events)
+async def trust_graph(
+    event_ids_filter: str | None = Query(None, alias="event_ids"),
+    trace_id: str | None = Query(None),
+    run_id: str | None = Query(None),
+):
+    from_spans = False
 
-    spans = await get_service_spans()
-    kiali_edges = []
-    if not spans:
-        kiali_edges = await get_kiali_edges()
+    if run_id and not trace_id:
+        conn = _get_db()
+        row = conn.execute(
+            "SELECT trace_id FROM pipeline_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        conn.close()
+        if row:
+            trace_id = row["trace_id"]
 
-    all_edges = enrich_and_detect(trust_edges, spans, kiali_edges)
+    if trace_id:
+        conn = _get_db()
+        span_rows = conn.execute(
+            "SELECT * FROM trust_spans WHERE trace_id = ?", (trace_id,)
+        ).fetchall()
+        conn.close()
 
-    nodes = []
-    for agent in AGENTS:
-        nodes.append({
-            "id": agent,
-            "label": agent,
-            "scopes": AGENT_SCOPES.get(agent, []),
-            "type": NODE_TYPES.get(agent, "agent"),
-        })
-    nodes.append({"id": "alice", "label": "alice", "scopes": ["*"], "type": "user"})
+        if span_rows:
+            trust_edges, event_ids = build_trust_dag_from_spans(span_rows)
+            from_spans = True
+        else:
+            trust_edges, event_ids = [], []
+            from_spans = True
 
-    seen_ids = {n["id"] for n in nodes}
-    for edge in all_edges:
-        for field in ("source", "target"):
-            eid = edge[field]
-            if eid not in seen_ids:
-                nodes.append({"id": eid, "label": eid, "scopes": [], "type": "agent"})
-                seen_ids.add(eid)
+    if not from_spans:
+        kc_events = await get_token_exchange_events()
+        if event_ids_filter:
+            requested = set(event_ids_filter.split(","))
+            kc_events = [e for e in kc_events if e.get("id") in requested]
+        trust_edges, event_ids = build_trust_dag(kc_events)
+
+    all_edges = list(trust_edges)
+
+    scoped = from_spans or event_ids_filter
+
+    if scoped:
+        edge_node_ids = set()
+        for edge in all_edges:
+            edge_node_ids.add(edge["source"])
+            edge_node_ids.add(edge["target"])
+
+        nodes = []
+        seen_ids = set()
+        for nid in edge_node_ids:
+            if nid in seen_ids:
+                continue
+            seen_ids.add(nid)
+            if nid == "alice":
+                nodes.append({"id": "alice", "label": "Alice", "scopes": ["*"], "type": "user"})
+            elif nid == "trust-graph-ui":
+                nodes.append({"id": "trust-graph-ui", "label": "Dashboard", "scopes": [], "type": "orchestrator"})
+            elif nid in AGENT_SCOPES:
+                nodes.append({"id": nid, "label": nid, "scopes": AGENT_SCOPES.get(nid, []), "type": NODE_TYPES.get(nid, "agent")})
+            else:
+                nodes.append({"id": nid, "label": nid, "scopes": [], "type": "agent"})
+    else:
+        nodes = []
+        for agent in AGENTS:
+            nodes.append({
+                "id": agent,
+                "label": agent,
+                "scopes": AGENT_SCOPES.get(agent, []),
+                "type": NODE_TYPES.get(agent, "agent"),
+            })
+        nodes.append({"id": "alice", "label": "Alice", "scopes": ["*"], "type": "user"})
+        nodes.append({"id": "trust-graph-ui", "label": "Dashboard", "scopes": [], "type": "orchestrator"})
+
+        seen_ids = {n["id"] for n in nodes}
+        for edge in all_edges:
+            for field in ("source", "target"):
+                eid = edge[field]
+                if eid not in seen_ids:
+                    nodes.append({"id": eid, "label": eid, "scopes": [], "type": "agent"})
+                    seen_ids.add(eid)
 
     paths = compute_paths(all_edges, nodes)
     explanations = generate_explanations(paths, nodes)
 
+    node_ids = {n["id"] for n in nodes}
     capability_alignment = {}
     for agent in AGENTS:
-        capability_alignment[agent] = "ALIGNED"
+        if agent in node_ids:
+            capability_alignment[agent] = "ALIGNED"
 
-    return {
+    result = {
         "nodes": nodes,
         "edges": all_edges,
         "event_ids": event_ids,
@@ -346,21 +497,40 @@ async def trust_graph():
         "explanations": explanations,
         "capability_alignment": capability_alignment,
         "stats": {
-            "keycloak_events": len(kc_events),
             "trust_edges": len(trust_edges),
-            "network_spans": len(spans),
-            "kiali_edges": len(kiali_edges),
             "authenticated": sum(1 for e in all_edges if e.get("status") == "authenticated"),
             "denied": sum(1 for e in all_edges if e.get("status") == "denied"),
             "unauthenticated": sum(1 for e in all_edges if e.get("status") == "unauthenticated"),
         },
         "layers": {
-            "layer1_keycloak": True,
-            "layer2_spans": bool(spans),
-            "layer2_kiali": bool(kiali_edges) and not spans,
-            "layer3_runtime": False,
+            "layer1_keycloak": not from_spans,
+            "layer2_authbridge_spans": from_spans,
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if trace_id:
+        result["trace_id"] = trace_id
+    return result
+
+
+@app.get("/api/pipeline-runs")
+async def list_pipeline_runs():
+    conn = _get_db()
+    rows = conn.execute(
+        "SELECT run_id, trace_id, pipeline, status, created_at FROM pipeline_runs ORDER BY created_at DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return {
+        "runs": [
+            {
+                "run_id": r["run_id"],
+                "trace_id": r["trace_id"],
+                "pipeline": json.loads(r["pipeline"]),
+                "status": r["status"],
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
     }
 
 
@@ -417,7 +587,10 @@ async def execute_pipeline(request: dict):
         if agent_name not in AGENTS:
             return {"error": f"Unknown agent: {agent_name}"}, 400
 
-    run_id = str(uuid.uuid4())[:8]
+    run_id = str(uuid.uuid4())
+    trace_id = secrets.token_hex(16)
+    parent_span_id = secrets.token_hex(8)
+    traceparent = f"00-{trace_id}-{parent_span_id}-01"
     steps = []
 
     try:
@@ -486,6 +659,7 @@ async def execute_pipeline(request: dict):
                             "Authorization": f"Bearer {agent_token}",
                             "Content-Type": "application/json",
                             "A2A-Version": "1.0",
+                            "traceparent": traceparent,
                         },
                         json={
                             "message": {
@@ -528,20 +702,23 @@ async def execute_pipeline(request: dict):
                         "event_ids": [],
                     })
 
-        # Fetch recent Keycloak events to find TOKEN_EXCHANGE events from this run
-        # (In production, we'd correlate by trace ID or custom event attributes)
-        kc_events = await get_token_exchange_events()
-        recent_event_ids = [evt.get("id", "") for evt in kc_events[:10]]  # Last 10 events
-
         total_duration_ms = sum(step["duration_ms"] for step in steps)
         status = "completed" if all(200 <= step["status"] < 300 for step in steps) else "failed"
 
+        conn = _get_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_runs (run_id, trace_id, pipeline, status, created_at) VALUES (?, ?, ?, ?, ?)",
+            (run_id, trace_id, json.dumps(pipeline), status, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        conn.close()
+
         return {
             "run_id": run_id,
+            "trace_id": trace_id,
             "status": status,
             "steps": steps,
             "total_duration_ms": total_duration_ms,
-            "keycloak_events": recent_event_ids,
         }
 
     except Exception as e:
