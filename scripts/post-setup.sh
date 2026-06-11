@@ -24,15 +24,23 @@ fi
 echo "Using KAGENTI_REPO: $KAGENTI_REPO"
 echo
 
-# Step 1: Build and push custom AuthBridge image
-echo "Step 1: Building custom AuthBridge image with OTel support..."
-cd "$KAGENTI_REPO/authbridge"
+# Step 1: Build and push custom AuthBridge image (if not already present)
+echo "Step 1: Checking for custom AuthBridge image..."
 
-podman build -t authbridge:otel -f cmd/authbridge-proxy/Dockerfile .
-podman tag authbridge:otel 127.0.0.1:5000/authbridge:otel
+if podman image exists localhost/authbridge:otel; then
+    echo "✓ AuthBridge image already exists locally, skipping build"
+else
+    echo "Building custom AuthBridge image with OTel support..."
+    cd "$KAGENTI_REPO/authbridge"
+    podman build -t authbridge:otel -f cmd/authbridge-proxy/Dockerfile .
+    echo "✓ AuthBridge image built"
+fi
+
+echo "Pushing to local registry..."
+podman tag localhost/authbridge:otel 127.0.0.1:5000/authbridge:otel
 podman push 127.0.0.1:5000/authbridge:otel --tls-verify=false
 
-echo "✓ AuthBridge image built and pushed to ttg-registry:5000/authbridge:otel"
+echo "✓ AuthBridge image available at ttg-registry:5000/authbridge:otel"
 echo
 
 # Step 2: Update kagenti-platform-config
