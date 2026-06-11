@@ -16,6 +16,8 @@ KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "demo")
 JAEGER_URL = os.environ.get("JAEGER_URL", "http://jaeger.observability.svc.cluster.local:16686")
 KIALI_URL = os.environ.get("KIALI_URL", "http://kiali.istio-system.svc.cluster.local:20001")
 NAMESPACE = os.environ.get("NAMESPACE", "agentic-ml")
+BACKEND_CLIENT_ID = os.environ.get("BACKEND_CLIENT_ID", "trust-graph-ui")
+BACKEND_CLIENT_SECRET = os.environ.get("BACKEND_CLIENT_SECRET", "trust-graph-ui-secret")
 
 app = FastAPI(title="Trust Graph UI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -425,7 +427,8 @@ async def execute_pipeline(request: dict):
                 f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token",
                 data={
                     "grant_type": "password",
-                    "client_id": "demo-dashboard",
+                    "client_id": BACKEND_CLIENT_ID,
+                    "client_secret": BACKEND_CLIENT_SECRET,
                     "username": "alice",
                     "password": "demo",
                     "scope": "openid",
@@ -442,16 +445,45 @@ async def execute_pipeline(request: dict):
             alice_token = token_resp.json()["access_token"]
 
             # Execute pipeline sequentially using A2A /message:send
+            # Each call exchanges Alice's token for an agent-scoped token first,
+            # producing Keycloak TOKEN_EXCHANGE events visible in the trust graph.
             for agent_name in pipeline:
                 agent_url = f"http://{agent_name}.{NAMESPACE}.svc.cluster.local:8000"
+                spiffe_id = f"spiffe://localtest.me/ns/{NAMESPACE}/sa/{agent_name}"
 
                 start_time = time.time()
 
                 try:
+                    # Exchange Alice's token for one scoped to this agent
+                    exchange_resp = await client.post(
+                        f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token",
+                        data={
+                            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                            "subject_token": alice_token,
+                            "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
+                            "audience": spiffe_id,
+                            "client_id": BACKEND_CLIENT_ID,
+                            "client_secret": BACKEND_CLIENT_SECRET,
+                        },
+                    )
+
+                    if exchange_resp.status_code != 200:
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        steps.append({
+                            "agent": agent_name,
+                            "status": exchange_resp.status_code,
+                            "duration_ms": duration_ms,
+                            "error": f"Token exchange failed: {exchange_resp.text}",
+                            "event_ids": [],
+                        })
+                        continue
+
+                    agent_token = exchange_resp.json()["access_token"]
+
                     agent_resp = await client.post(
                         f"{agent_url}/message:send",
                         headers={
-                            "Authorization": f"Bearer {alice_token}",
+                            "Authorization": f"Bearer {agent_token}",
                             "Content-Type": "application/json",
                             "A2A-Version": "1.0",
                         },
@@ -474,14 +506,8 @@ async def execute_pipeline(request: dict):
                         "agent": agent_name,
                         "status": agent_resp.status_code,
                         "duration_ms": duration_ms,
-                        "event_ids": [],  # Will be populated from Keycloak events
+                        "event_ids": [],
                     })
-
-                    # Update token if agent returned a new one (for delegation chain)
-                    if agent_resp.status_code == 200:
-                        resp_data = agent_resp.json()
-                        # Agent might return downstream results that contain tokens
-                        # For now, keep using Alice's token
 
                 except httpx.TimeoutException:
                     duration_ms = int((time.time() - start_time) * 1000)

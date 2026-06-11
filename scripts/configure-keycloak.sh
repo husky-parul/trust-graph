@@ -168,11 +168,32 @@ for s in json.load(sys.stdin):
   done
 }
 
-# --- Create demo-dashboard public client (for Alice login) ---
+# --- Create demo-dashboard public client (for Alice login in browser) ---
 create_dashboard_client() {
   log "Creating demo-dashboard client"
   kc_api POST "/${REALM}/clients" \
     "{\"clientId\":\"demo-dashboard\",\"enabled\":true,\"publicClient\":true,\"standardFlowEnabled\":true,\"directAccessGrantsEnabled\":true}"
+}
+
+# --- Create trust-graph-ui confidential client (backend token exchange) ---
+create_backend_client() {
+  local client_id="trust-graph-ui"
+  log "Creating ${client_id} confidential client"
+  kc_api POST "/${REALM}/clients" \
+    "{\"clientId\":\"${client_id}\",\"enabled\":true,\"publicClient\":false,\"serviceAccountsEnabled\":true,\"standardFlowEnabled\":false,\"directAccessGrantsEnabled\":true,\"secret\":\"trust-graph-ui-secret\"}"
+
+  local client_uuid
+  client_uuid=$(kc_api GET "/${REALM}/clients?clientId=${client_id}" | python3 -c "
+import sys,json
+clients=json.load(sys.stdin)
+if clients: print(clients[0]['id'])
+" 2>/dev/null) || true
+
+  if [[ -n "$client_uuid" ]]; then
+    kc_api PUT "/${REALM}/clients/${client_uuid}" \
+      "{\"attributes\":{\"standard.token.exchange.enabled\":\"true\"}}"
+    log "Enabled token exchange on ${client_id}"
+  fi
 }
 
 # --- Create alice user ---
@@ -207,6 +228,7 @@ main() {
   create_client_scopes
   create_agent_clients
   create_dashboard_client
+  create_backend_client
   create_demo_user
 
   log "Keycloak configuration complete"
