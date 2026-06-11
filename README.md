@@ -87,11 +87,26 @@ The trust graph is currently built on-the-fly from event streams — Keycloak ev
 ## Quick Start
 
 ```bash
-# Set path to your kagenti repo clone
-export KAGENTI_REPO=/path/to/kagenti
+# Set path to your kagenti-extensions repo clone
+export KAGENTI_REPO=/path/to/kagenti-extensions
 
 # Run full setup (Kind cluster + Kagenti platform + demo)
 ./scripts/setup.sh
+
+# Apply custom AuthBridge with OTel support
+./scripts/post-setup.sh
+```
+
+The `post-setup.sh` script:
+- Builds custom AuthBridge image with OTel span emission
+- Configures SPIFFE identity and JWT audience
+- Restarts agent pods to pick up the new sidecar
+- Verifies OTel tracing is enabled
+
+After setup, access the trust-graph UI:
+```bash
+kubectl port-forward -n trust-graph-ui svc/trust-graph-ui 8090:8090 --address=0.0.0.0
+# Open http://localhost:8090 in your browser
 ```
 
 ## What This Demo Shows
@@ -139,4 +154,85 @@ Alice → Kagenti UI → Kagenti Backend → A2A Agent
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
 - [Helm](https://helm.sh/)
 - Docker or Podman
-- [Kagenti](https://github.com/kagenti/kagenti) repo clone
+- [Kagenti Extensions](https://github.com/kagenti/kagenti-extensions) repo clone (for custom AuthBridge)
+
+## Troubleshooting
+
+### AuthBridge not emitting OTel spans
+
+Check if OTel is initialized:
+```bash
+kubectl logs -n agentic-ml -l app=data-agent -c authbridge-proxy | grep -i otel
+```
+
+Expected output: `level=INFO msg="otel tracing enabled" endpoint=http://trust-graph-ui...`
+
+If missing, verify the custom image is deployed:
+```bash
+kubectl get pod -n agentic-ml -l app=data-agent -o jsonpath='{.items[0].spec.containers[?(@.name=="authbridge-proxy")].image}'
+```
+
+Should show: `ttg-registry:5000/authbridge:otel`
+
+If it shows the default image, re-run `./scripts/post-setup.sh`
+
+### Trust graph shows "none" for scopes
+
+This means AuthBridge spans aren't reaching the database with `trust.*` attributes. Check:
+
+1. Verify spans are being stored:
+   ```bash
+   kubectl exec -n trust-graph-ui deploy/trust-graph-ui -- python3 -c "
+   import sqlite3
+   conn = sqlite3.connect('/tmp/trust_graph.db')
+   count = conn.execute('SELECT COUNT(*) FROM trust_spans').fetchone()[0]
+   print(f'Total spans: {count}')
+   conn.close()"
+   ```
+
+2. Check if spans have trust attributes:
+   ```bash
+   kubectl exec -n trust-graph-ui deploy/trust-graph-ui -- python3 -c "
+   import sqlite3, json
+   conn = sqlite3.connect('/tmp/trust_graph.db')
+   conn.row_factory = sqlite3.Row
+   span = conn.execute('SELECT source, target, scopes FROM trust_spans LIMIT 1').fetchone()
+   if span:
+       print(f'source={span[\"source\"]}, target={span[\"target\"]}, scopes={span[\"scopes\"]}')
+   conn.close()"
+   ```
+
+   Empty source/target means the OTLP receiver is getting spans but `trust.*` attributes are missing.
+
+### Alice node missing from graph
+
+The backend adds a fallback Alice → Dashboard edge if trust-graph-ui appears in the graph. If Alice is still missing:
+
+1. Check if the graph has any edges:
+   ```bash
+   # Via UI: look at the "Pipeline Run (X events)" badge in the topbar
+   ```
+
+2. Verify the backend is using the scoped node filter (only shows nodes from edges)
+
+### Browser caching old JavaScript
+
+Hard refresh: `Ctrl+Shift+F5` or `Cmd+Shift+R`
+
+Or disable cache in DevTools:
+1. Open DevTools (F12)
+2. Network tab
+3. Check "Disable cache"
+4. Refresh
+
+### Port-forward not accessible from host
+
+The kubectl port-forward must bind to `0.0.0.0`, not `127.0.0.1`:
+```bash
+kubectl port-forward -n trust-graph-ui svc/trust-graph-ui 8090:8090 --address=0.0.0.0
+```
+
+Then SSH tunnel from your host:
+```bash
+ssh -L 8090:127.0.0.1:8090 claude@<VM_IP>
+```

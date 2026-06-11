@@ -112,15 +112,15 @@ function renderGraph() {
     .data(["authenticated", "denied", "unauthenticated"])
     .join("marker")
     .attr("id", d => `arrow-${d}`)
-    .attr("viewBox", "0 -5 10 10")
-    .attr("refX", 10)
-    .attr("refY", 0)
-    .attr("markerWidth", 7)
-    .attr("markerHeight", 7)
+    .attr("viewBox", "0 0 10 10")
+    .attr("refX", 9)
+    .attr("refY", 5)
+    .attr("markerWidth", 8)
+    .attr("markerHeight", 8)
     .attr("orient", "auto")
     .append("path")
     .attr("fill", d => edgeColors[d])
-    .attr("d", "M0,-4L10,0L0,4");
+    .attr("d", "M0,0 L10,5 L0,10 Z");
 
   const edgeGroup = svg.append("g").attr("class", "edges");
   const nodeGroup = svg.append("g").attr("class", "nodes");
@@ -255,7 +255,13 @@ function renderNodeDetail(n) {
   if (explanation) {
     explainEl.innerHTML = `<div class="explain-text">${escapeHtml(explanation)}</div>`;
   } else {
-    explainEl.innerHTML = `<div class="explain-text">No delegation chains lead to this node.</div>`;
+    let defaultText = `${escapeHtml(n.id)} is an agent in the system.`;
+    if (n.type === "user") {
+      defaultText = `${escapeHtml(n.id)} is the principal user initiating the pipeline.`;
+    } else if (n.id === "trust-graph-ui" || n.type === "orchestrator") {
+      defaultText = "Dashboard orchestrates agent calls on behalf of the user.";
+    }
+    explainEl.innerHTML = `<div class="explain-text">${defaultText}</div>`;
   }
 
   const edgesEl = document.getElementById("tab-edges");
@@ -332,8 +338,6 @@ function renderEdgeCard(e) {
       <div class="detail-section-title">${escapeHtml(e.source)} → ${escapeHtml(e.target)}</div>
       <div class="detail-row"><span class="label">Hop Kind</span><span class="value">${e.hop_kind || "—"}</span></div>
       <div class="detail-row"><span class="label">Call Count</span><span class="value">${e.call_count || 1} ${e.call_count === 1 ? "entry" : "entries"}</span></div>
-      <div class="detail-row"><span class="label">First Seen</span><span class="value">${e.first_seen || "—"}</span></div>
-      <div class="detail-row"><span class="label">Last Seen</span><span class="value">${e.last_seen || "—"}</span></div>
       <div class="detail-row"><span class="label">Status</span><span class="value">${statusLabel}</span></div>
       <div class="detail-row"><span class="label">Scopes</span><span class="value">${scopes}</span></div>
       ${e.http_status ? `<div class="detail-row"><span class="label">HTTP</span><span class="value">${e.http_status}</span></div>` : ""}
