@@ -31,6 +31,25 @@ kubectl rollout status statefulset -n keycloak keycloak --timeout=300s
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/namespace.yaml"
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/rbac.yaml"
 
+# 1b. Register agentic-ml with Kagenti (creates Keycloak client secrets via oauth-secret job)
+log "Registering agentic-ml as Kagenti agent namespace..."
+# Label namespace for Helm adoption (idempotent)
+kubectl label ns agentic-ml app.kubernetes.io/managed-by=Helm --overwrite 2>/dev/null || true
+kubectl annotate ns agentic-ml meta.helm.sh/release-name=kagenti meta.helm.sh/release-namespace=kagenti-system --overwrite 2>/dev/null || true
+# Delete completed oauth-secret job so Helm can recreate it with updated namespaces
+kubectl delete job kagenti-agent-oauth-secret-job -n kagenti-system --ignore-not-found 2>/dev/null || true
+KAGENTI_CHART="${KAGENTI_REPO}/charts/kagenti"
+CURRENT_NS=$(helm get values kagenti -n kagenti-system -o json 2>/dev/null | python3 -c "import sys,json; ns=json.load(sys.stdin).get('agentNamespaces',['team1','team2']); print(','.join(ns))" 2>/dev/null || echo "team1,team2")
+if ! echo "$CURRENT_NS" | grep -q 'agentic-ml'; then
+  CURRENT_NS="${CURRENT_NS},agentic-ml"
+fi
+helm upgrade kagenti "${KAGENTI_CHART}" -n kagenti-system --reuse-values \
+  --set "agentNamespaces={${CURRENT_NS}}"
+log "Waiting for oauth-secret job..."
+kubectl wait --for=condition=complete job/kagenti-agent-oauth-secret-job -n kagenti-system --timeout=120s || {
+  log "WARNING: oauth-secret job did not complete. Pods may fail to mount secrets."
+}
+
 # 2. AuthBridge routes ConfigMap
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/authbridge-routes.yaml"
 
@@ -40,12 +59,16 @@ kubectl apply -f "${REPO_ROOT}/k8s/agentic/sidecar-configmaps.yaml"
 # 2c. Environments ConfigMap (Keycloak credentials for client-registration sidecar)
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/environments-configmap.yaml"
 
-# 3. Services (needed before Agent CRs so the operator can resolve endpoints)
+# 3. Services
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/services.yaml"
 
-# 4. Agent CRs — operator creates Deployments with AuthBridge sidecars injected
-log "Applying Agent CRs (operator handles Deployments + sidecar injection)..."
-kubectl apply -f "${REPO_ROOT}/k8s/agentic/agent-crs.yaml"
+# 4. Deployments (webhook injects AuthBridge sidecars based on kagenti.io/type label)
+log "Applying Deployments..."
+kubectl apply -f "${REPO_ROOT}/k8s/agentic/deployments.yaml"
+
+# 4b. AgentRuntime CRs (tell operator to manage these Deployments)
+log "Applying AgentRuntime CRs..."
+kubectl apply -f "${REPO_ROOT}/k8s/agentic/agentruntimes.yaml"
 
 # 5. Wait for pods
 log "Waiting for pods..."
@@ -70,7 +93,7 @@ kubectl run keycloak-config --rm -i --restart=Never \
     log "WARNING: Keycloak configuration job failed. You may need to run configure-keycloak.sh manually."
   }
 
-# 7. Check AgentCards (created by operator from Agent CRs)
+# 7. Check AgentRuntimes and AgentCards
 log "Checking AgentCards..."
 kubectl get agentcards -n agentic-ml 2>/dev/null || log "AgentCard CRDs not yet available (operator may still be syncing)"
 

@@ -6,6 +6,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: data-agent
 spec:
@@ -22,27 +23,6 @@ spec:
         app.kubernetes.io/name: data-agent
     spec:
       serviceAccountName: data-agent
-      initContainers:
-        - name: proxy-init
-          image: ttg-registry:5000/proxy-init:v0.6.0-alpha.3
-          command: ['sh', '-c', '/usr/local/bin/init-iptables.sh && IPT=$(which iptables-legacy 2>/dev/null || echo iptables) && $IPT -t nat -D PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123 && $IPT -t nat -A PROXY_OUTPUT -m owner --uid-owner 1000 -j RETURN && $IPT -t nat -A PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123']
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          securityContext:
-            capabilities:
-              add: [NET_ADMIN, NET_RAW]
-            runAsUser: 0
-            runAsNonRoot: false
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       containers:
         - name: agent
           image: ttg-registry:5000/demo-ml-agent:latest
@@ -71,12 +51,12 @@ spec:
             - name: OPENAI_API_KEY
               value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -89,6 +69,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: training-agent
 spec:
@@ -105,27 +86,6 @@ spec:
         app.kubernetes.io/name: training-agent
     spec:
       serviceAccountName: training-agent
-      initContainers:
-        - name: proxy-init
-          image: ttg-registry:5000/proxy-init:v0.6.0-alpha.3
-          command: ['sh', '-c', '/usr/local/bin/init-iptables.sh && IPT=$(which iptables-legacy 2>/dev/null || echo iptables) && $IPT -t nat -D PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123 && $IPT -t nat -A PROXY_OUTPUT -m owner --uid-owner 1000 -j RETURN && $IPT -t nat -A PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123']
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          securityContext:
-            capabilities:
-              add: [NET_ADMIN, NET_RAW]
-            runAsUser: 0
-            runAsNonRoot: false
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       containers:
         - name: agent
           image: ttg-registry:5000/demo-ml-agent:latest
@@ -154,12 +114,12 @@ spec:
             - name: OPENAI_API_KEY
               value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -172,6 +132,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: eval-agent
 spec:
@@ -188,27 +149,6 @@ spec:
         app.kubernetes.io/name: eval-agent
     spec:
       serviceAccountName: eval-agent
-      initContainers:
-        - name: proxy-init
-          image: ttg-registry:5000/proxy-init:v0.6.0-alpha.3
-          command: ['sh', '-c', '/usr/local/bin/init-iptables.sh && IPT=$(which iptables-legacy 2>/dev/null || echo iptables) && $IPT -t nat -D PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123 && $IPT -t nat -A PROXY_OUTPUT -m owner --uid-owner 1000 -j RETURN && $IPT -t nat -A PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123']
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          securityContext:
-            capabilities:
-              add: [NET_ADMIN, NET_RAW]
-            runAsUser: 0
-            runAsNonRoot: false
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       containers:
         - name: agent
           image: ttg-registry:5000/demo-ml-agent:latest
@@ -237,12 +177,12 @@ spec:
             - name: OPENAI_API_KEY
               value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -255,6 +195,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: deploy-agent
 spec:
@@ -271,27 +212,6 @@ spec:
         app.kubernetes.io/name: deploy-agent
     spec:
       serviceAccountName: deploy-agent
-      initContainers:
-        - name: proxy-init
-          image: ttg-registry:5000/proxy-init:v0.6.0-alpha.3
-          command: ['sh', '-c', '/usr/local/bin/init-iptables.sh && IPT=$(which iptables-legacy 2>/dev/null || echo iptables) && $IPT -t nat -D PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123 && $IPT -t nat -A PROXY_OUTPUT -m owner --uid-owner 1000 -j RETURN && $IPT -t nat -A PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123']
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          securityContext:
-            capabilities:
-              add: [NET_ADMIN, NET_RAW]
-            runAsUser: 0
-            runAsNonRoot: false
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       containers:
         - name: agent
           image: ttg-registry:5000/demo-ml-agent:latest
@@ -320,12 +240,12 @@ spec:
             - name: OPENAI_API_KEY
               value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -337,6 +257,8 @@ metadata:
   name: model-registry
   namespace: agentic-ml
   labels:
+    kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     app.kubernetes.io/name: model-registry
 spec:
   replicas: 1
@@ -347,30 +269,10 @@ spec:
     metadata:
       labels:
         app: model-registry
+        kagenti.io/type: agent
         app.kubernetes.io/name: model-registry
     spec:
       serviceAccountName: model-registry
-      initContainers:
-        - name: proxy-init
-          image: ttg-registry:5000/proxy-init:v0.6.0-alpha.3
-          command: ['sh', '-c', '/usr/local/bin/init-iptables.sh && IPT=$(which iptables-legacy 2>/dev/null || echo iptables) && $IPT -t nat -D PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123 && $IPT -t nat -A PROXY_OUTPUT -m owner --uid-owner 1000 -j RETURN && $IPT -t nat -A PROXY_OUTPUT -p tcp -j REDIRECT --to-port 15123']
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-          securityContext:
-            capabilities:
-              add: [NET_ADMIN, NET_RAW]
-            runAsUser: 0
-            runAsNonRoot: false
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
       containers:
         - name: agent
           image: ttg-registry:5000/demo-model-registry:latest
@@ -383,12 +285,12 @@ spec:
             - name: AGENT_ENDPOINT
               value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001

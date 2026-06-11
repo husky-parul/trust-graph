@@ -116,6 +116,11 @@ push_image "localhost/proxy-init:v0.6.0-alpha.3"     "proxy-init:v0.6.0-alpha.3"
 
 if ${CONTAINER_CMD} image exists localhost/agent-oauth-secret:v0.7.0-alpha.1 2>/dev/null; then
   push_image "localhost/agent-oauth-secret:v0.7.0-alpha.1" "agent-oauth-secret:v0.7.0-alpha.1"
+  # Helm job references ghcr.io path — pull from our registry into containerd and retag
+  ${CONTAINER_CMD} exec "${KIND_NODE}" crictl pull --creds "" "ttg-registry:${REGISTRY_PORT}/agent-oauth-secret:v0.7.0-alpha.1" || true
+  ${CONTAINER_CMD} exec "${KIND_NODE}" ctr --namespace=k8s.io images tag \
+    "ttg-registry:${REGISTRY_PORT}/agent-oauth-secret:v0.7.0-alpha.1" \
+    "ghcr.io/kagenti/kagenti/agent-oauth-secret:v0.7.0-alpha.1" 2>/dev/null || true
 fi
 
 log "All images built and pushed to ${REGISTRY_NAME}"
