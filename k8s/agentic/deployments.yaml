@@ -19,6 +19,7 @@ spec:
       labels:
         app: data-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: data-agent
     spec:
@@ -82,6 +83,7 @@ spec:
       labels:
         app: training-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: training-agent
     spec:
@@ -145,6 +147,7 @@ spec:
       labels:
         app: eval-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: eval-agent
     spec:
@@ -208,6 +211,7 @@ spec:
       labels:
         app: deploy-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: deploy-agent
     spec:
@@ -270,6 +274,7 @@ spec:
       labels:
         app: model-registry
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         app.kubernetes.io/name: model-registry
     spec:
       serviceAccountName: model-registry

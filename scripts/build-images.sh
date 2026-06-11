@@ -16,9 +16,15 @@ REGISTRY_PORT=5000
 KIND_NETWORK="kind"
 
 KAGENTI_REPO="${KAGENTI_REPO:-}"
+KAGENTI_OPERATOR_REPO="${KAGENTI_OPERATOR_REPO:-}"
 if [[ -z "$KAGENTI_REPO" ]]; then
   if [[ -d "${REPO_ROOT}/../kagenti" ]]; then
     KAGENTI_REPO="${REPO_ROOT}/../kagenti"
+  fi
+fi
+if [[ -z "$KAGENTI_OPERATOR_REPO" ]]; then
+  if [[ -d "${REPO_ROOT}/../kagenti-operator" ]]; then
+    KAGENTI_OPERATOR_REPO="${REPO_ROOT}/../kagenti-operator"
   fi
 fi
 
@@ -102,6 +108,13 @@ if [[ -n "$KAGENTI_REPO" && -d "${KAGENTI_REPO}/kagenti/auth/agent-oauth-secret"
     "${KAGENTI_REPO}/kagenti/"
 fi
 
+if [[ -n "$KAGENTI_OPERATOR_REPO" && -f "${KAGENTI_OPERATOR_REPO}/kagenti-operator/Dockerfile" ]]; then
+  log "Building kagenti-operator (with spire-agent-socket mount fix)"
+  ${CONTAINER_CMD} build -t kagenti-operator:fixed \
+    -f "${KAGENTI_OPERATOR_REPO}/kagenti-operator/Dockerfile" \
+    "${KAGENTI_OPERATOR_REPO}/kagenti-operator/"
+fi
+
 log "Pulling proxy-init (for AuthBridge iptables interception)"
 ${CONTAINER_CMD} pull ghcr.io/kagenti/kagenti-extensions/proxy-init:v0.6.0-alpha.3
 ${CONTAINER_CMD} tag ghcr.io/kagenti/kagenti-extensions/proxy-init:v0.6.0-alpha.3 proxy-init:v0.6.0-alpha.3
@@ -121,6 +134,10 @@ if ${CONTAINER_CMD} image exists localhost/agent-oauth-secret:v0.7.0-alpha.1 2>/
   ${CONTAINER_CMD} exec "${KIND_NODE}" ctr --namespace=k8s.io images tag \
     "ttg-registry:${REGISTRY_PORT}/agent-oauth-secret:v0.7.0-alpha.1" \
     "ghcr.io/kagenti/kagenti/agent-oauth-secret:v0.7.0-alpha.1" 2>/dev/null || true
+fi
+
+if ${CONTAINER_CMD} image exists localhost/kagenti-operator:fixed 2>/dev/null; then
+  push_image "localhost/kagenti-operator:fixed" "kagenti-operator:fixed"
 fi
 
 log "All images built and pushed to ${REGISTRY_NAME}"

@@ -22,7 +22,7 @@ kubectl patch statefulset -n keycloak keycloak --type='json' -p="[
   {\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/imagePullPolicy\",\"value\":\"Always\"}
 ]"
 # Add KC_FEATURES if not already present
-KC_FEATURES="client-auth-federated,kubernetes-service-accounts,token-exchange,token-exchange-standard"
+KC_FEATURES="client-auth-federated:v1,spiffe:v1,kubernetes-service-accounts,token-exchange,token-exchange-standard"
 if ! kubectl get statefulset -n keycloak keycloak -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' | grep -q KC_FEATURES; then
   kubectl patch statefulset -n keycloak keycloak --type='json' \
     -p="[{\"op\":\"add\",\"path\":\"/spec/template/spec/containers/0/env/-\",\"value\":{\"name\":\"KC_FEATURES\",\"value\":\"${KC_FEATURES}\"}}]"
@@ -57,6 +57,19 @@ kubectl wait --for=condition=complete job/kagenti-agent-oauth-secret-job -n kage
   log "WARNING: oauth-secret job did not complete. Pods may fail to mount secrets."
 }
 
+# 1c. Patch operator to include spire-agent-socket volumeMount fix (missing in 0.3.0-alpha.1)
+FIXED_OPERATOR_IMG="ttg-registry:5000/kagenti-operator:fixed"
+if curl -sf "http://127.0.0.1:5000/v2/kagenti-operator/tags/list" | grep -q '"fixed"'; then
+  CURRENT_OPERATOR_IMG=$(kubectl get deploy kagenti-controller-manager -n kagenti-system -o jsonpath='{.spec.template.spec.containers[0].image}')
+  if [[ "$CURRENT_OPERATOR_IMG" != "$FIXED_OPERATOR_IMG" ]]; then
+    log "Patching operator with spire-agent-socket mount fix..."
+    kubectl set image deployment/kagenti-controller-manager -n kagenti-system "manager=${FIXED_OPERATOR_IMG}"
+    kubectl patch deployment kagenti-controller-manager -n kagenti-system --type=json \
+      -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Always"}]'
+    kubectl rollout status deployment/kagenti-controller-manager -n kagenti-system --timeout=120s
+  fi
+fi
+
 # 2. AuthBridge routes ConfigMap
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/authbridge-routes.yaml"
 
@@ -68,6 +81,44 @@ kubectl apply -f "${REPO_ROOT}/k8s/agentic/environments-configmap.yaml"
 
 # 3. Services
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/services.yaml"
+
+# 3b. Patch authbridge-runtime-config to use demo realm (Helm defaults to kagenti)
+log "Patching authbridge-runtime-config for demo realm..."
+kubectl apply -f - <<'AUTHCFG'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authbridge-runtime-config
+  namespace: agentic-ml
+data:
+  config.yaml: |
+    pipeline:
+      inbound:
+        plugins:
+          - name: jwt-validation
+            config:
+              issuer: "http://keycloak.localtest.me:8080/realms/demo"
+              keycloak_url: "http://keycloak-service.keycloak.svc:8080"
+              keycloak_realm: "demo"
+      outbound:
+        plugins:
+          - name: token-exchange
+            config:
+              keycloak_url: "http://keycloak-service.keycloak.svc:8080"
+              keycloak_realm: "demo"
+              default_policy: "exchange"
+              identity:
+                type: "spiffe"
+              routes:
+                file: "/etc/authproxy/routes.yaml"
+AUTHCFG
+
+# 3d. Delete stale per-agent ConfigMaps so webhook regenerates them from updated namespace config
+log "Cleaning stale per-agent authbridge ConfigMaps..."
+kubectl delete configmap -n agentic-ml -l kagenti.io/per-agent-config=true --ignore-not-found 2>/dev/null || true
+for agent in data-agent training-agent eval-agent deploy-agent model-registry; do
+  kubectl delete configmap "authbridge-config-${agent}" -n agentic-ml --ignore-not-found 2>/dev/null || true
+done
 
 # 4. Deployments (webhook injects AuthBridge sidecars based on kagenti.io/type label)
 log "Applying Deployments..."

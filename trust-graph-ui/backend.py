@@ -441,18 +441,30 @@ async def execute_pipeline(request: dict):
 
             alice_token = token_resp.json()["access_token"]
 
-            # Execute pipeline sequentially
+            # Execute pipeline sequentially using A2A /message:send
             for agent_name in pipeline:
                 agent_url = f"http://{agent_name}.{NAMESPACE}.svc.cluster.local:8000"
 
                 start_time = time.time()
 
                 try:
-                    # Call agent's /api/run-pipeline endpoint
                     agent_resp = await client.post(
-                        f"{agent_url}/api/run-pipeline",
-                        headers={"Authorization": f"Bearer {alice_token}"},
-                        json={"task": "execute"},
+                        f"{agent_url}/message:send",
+                        headers={
+                            "Authorization": f"Bearer {alice_token}",
+                            "Content-Type": "application/json",
+                            "A2A-Version": "1.0",
+                        },
+                        json={
+                            "message": {
+                                "role": "ROLE_USER",
+                                "parts": [{"text": f"Run {agent_name} pipeline step"}],
+                                "message_id": str(uuid.uuid4()),
+                            },
+                            "configuration": {
+                                "accepted_output_modes": ["text"],
+                            },
+                        },
                         timeout=20.0,
                     )
 

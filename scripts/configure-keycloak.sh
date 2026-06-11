@@ -77,7 +77,9 @@ create_client_scopes() {
       "{\"name\":\"${scope}\",\"protocol\":\"openid-connect\",\"attributes\":{\"include.in.token.scope\":\"true\"}}"
   done
 
+  local trust_domain="spiffe://localtest.me"
   for agent in "${AGENTS[@]}"; do
+    local spiffe_id="${trust_domain}/ns/${NAMESPACE}/sa/${agent}"
     local aud_scope="aud:${agent}"
     log "Creating audience scope: ${aud_scope}"
     kc_api POST "/${REALM}/client-scopes" \
@@ -94,39 +96,46 @@ for s in json.load(sys.stdin):
 
     if [[ -n "$scope_id" ]]; then
       kc_api POST "/${REALM}/client-scopes/${scope_id}/protocol-mappers/models" \
-        "{\"name\":\"${agent}-audience-mapper\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"${agent}\",\"access.token.claim\":\"true\"}}"
+        "{\"name\":\"${agent}-audience-mapper\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"${spiffe_id}\",\"access.token.claim\":\"true\"}}"
     fi
   done
 }
 
+# --- Create SPIFFE Identity Provider ---
+create_spiffe_idp() {
+  log "Creating spire-spiffe Identity Provider"
+  kc_api POST "/${REALM}/identity-provider/instances" \
+    "{\"alias\":\"spire-spiffe\",\"providerId\":\"spiffe\",\"enabled\":true,\"config\":{\"validateSignature\":\"true\",\"trustDomain\":\"spiffe://localtest.me\",\"bundleEndpoint\":\"http://spire-spiffe-oidc-discovery-provider.zero-trust-workload-identity-manager.svc.cluster.local/keys\"}}"
+}
+
 # --- Create agent clients ---
 create_agent_clients() {
+  local trust_domain="spiffe://localtest.me"
   for agent in "${AGENTS[@]}"; do
-    log "Creating client: ${agent}"
+    local spiffe_id="${trust_domain}/ns/${NAMESPACE}/sa/${agent}"
+    log "Creating client: ${spiffe_id}"
     kc_api POST "/${REALM}/clients" \
-      "{\"clientId\":\"${agent}\",\"enabled\":true,\"serviceAccountsEnabled\":true,\"clientAuthenticatorType\":\"client-jwt\",\"standardFlowEnabled\":false,\"directAccessGrantsEnabled\":false}"
+      "{\"clientId\":\"${spiffe_id}\",\"enabled\":true,\"serviceAccountsEnabled\":true,\"clientAuthenticatorType\":\"federated-jwt\",\"standardFlowEnabled\":false,\"directAccessGrantsEnabled\":false}"
 
     local client_uuid
-    client_uuid=$(kc_api GET "/${REALM}/clients?clientId=${agent}" | python3 -c "
+    client_uuid=$(kc_api GET "/${REALM}/clients?clientId=${spiffe_id}" | python3 -c "
 import sys,json
 clients=json.load(sys.stdin)
 if clients: print(clients[0]['id'])
 " 2>/dev/null) || continue
 
     if [[ -z "$client_uuid" ]]; then
-      log "WARNING: Could not find client UUID for ${agent}"
+      log "WARNING: Could not find client UUID for ${spiffe_id}"
       continue
     fi
 
-    # Set attributes via REST API (not kcadm — kcadm has attribute bug in KC 26.5.2)
-    # Never send client_id alongside client_assertion in federated-jwt exchange
     log "Setting attributes for ${agent} (${client_uuid})"
     kc_api PUT "/${REALM}/clients/${client_uuid}" \
-      "{\"attributes\":{\"jwt.credential.issuer\":\"kubernetes\",\"jwt.credential.sub\":\"system:serviceaccount:${NAMESPACE}:${agent}\",\"standard.token.exchange.enabled\":\"true\"}}"
+      "{\"attributes\":{\"jwt.credential.issuer\":\"spire-spiffe\",\"jwt.credential.sub\":\"${spiffe_id}\",\"standard.token.exchange.enabled\":\"true\"}}"
 
-    # Add audience mapper to the client itself
+    # Add audience mapper so exchanged tokens include the target agent audience
     kc_api POST "/${REALM}/clients/${client_uuid}/protocol-mappers/models" \
-      "{\"name\":\"${agent}-self-audience\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"${agent}\",\"access.token.claim\":\"true\"}}"
+      "{\"name\":\"${agent}-self-audience\",\"protocol\":\"openid-connect\",\"protocolMapper\":\"oidc-audience-mapper\",\"config\":{\"included.client.audience\":\"${spiffe_id}\",\"access.token.claim\":\"true\"}}"
 
     # Assign all capability scopes and audience scopes as defaults
     for scope in "${CAPABILITY_SCOPES[@]}"; do
@@ -194,6 +203,7 @@ main() {
   log "Got admin token"
 
   create_realm
+  create_spiffe_idp
   create_client_scopes
   create_agent_clients
   create_dashboard_client
