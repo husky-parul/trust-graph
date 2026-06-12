@@ -50,6 +50,19 @@ body {
 }
 .btn-load:hover { background: #2ea043; }
 
+.search-input {
+  background: #161b22;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  width: 180px;
+}
+.search-input::placeholder { color: #6e7681; }
+.search-input:focus { outline: none; border-color: #58a6ff; }
+
 .btn-print {
   margin-left: auto;
   background: transparent;

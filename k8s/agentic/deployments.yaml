@@ -6,6 +6,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: data-agent
 spec:
@@ -18,13 +19,14 @@ spec:
       labels:
         app: data-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: data-agent
     spec:
       serviceAccountName: data-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -41,13 +43,21 @@ spec:
               value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
             - name: AGENT_ENDPOINT
               value: "http://data-agent.agentic-ml.svc.cluster.local:8000"
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -60,6 +70,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: training-agent
 spec:
@@ -72,13 +83,14 @@ spec:
       labels:
         app: training-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: training-agent
     spec:
       serviceAccountName: training-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -95,13 +107,21 @@ spec:
               value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
             - name: AGENT_ENDPOINT
               value: "http://training-agent.agentic-ml.svc.cluster.local:8000"
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -114,6 +134,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: eval-agent
 spec:
@@ -126,13 +147,14 @@ spec:
       labels:
         app: eval-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: eval-agent
     spec:
       serviceAccountName: eval-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -145,15 +167,25 @@ spec:
               value: "model-evaluation"
             - name: AGENT_CAPABILITIES
               value: "read:test-data"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
             - name: AGENT_ENDPOINT
               value: "http://eval-agent.agentic-ml.svc.cluster.local:8000"
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -166,6 +198,7 @@ metadata:
   namespace: agentic-ml
   labels:
     kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
     app.kubernetes.io/name: deploy-agent
 spec:
@@ -178,13 +211,14 @@ spec:
       labels:
         app: deploy-agent
         kagenti.io/type: agent
+        kagenti.io/spire: enabled
         protocol.kagenti.io/a2a: ""
         app.kubernetes.io/name: deploy-agent
     spec:
       serviceAccountName: deploy-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -197,15 +231,25 @@ spec:
               value: "model-deployment"
             - name: AGENT_CAPABILITIES
               value: "deploy:staging"
+            - name: MODEL_REGISTRY_URL
+              value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
             - name: AGENT_ENDPOINT
               value: "http://deploy-agent.agentic-ml.svc.cluster.local:8000"
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tempo.observability.svc.cluster.local:4317"
+            - name: LLM_MODE
+              value: "mock"
+            - name: OPENAI_API_KEY
+              value: "mock-key-for-demo"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
@@ -217,6 +261,8 @@ metadata:
   name: model-registry
   namespace: agentic-ml
   labels:
+    kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
     app.kubernetes.io/name: model-registry
 spec:
   replicas: 1
@@ -227,25 +273,29 @@ spec:
     metadata:
       labels:
         app: model-registry
+        kagenti.io/type: agent
+        kagenti.io/spire: enabled
         app.kubernetes.io/name: model-registry
     spec:
       serviceAccountName: model-registry
       containers:
-        - name: registry
-          image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+        - name: agent
+          image: ttg-registry:5000/demo-model-registry:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
             - name: AUTH_MODE
               value: "check-scope"
+            - name: AGENT_ENDPOINT
+              value: "http://model-registry.agentic-ml.svc.cluster.local:8080"
           resources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
             requests:
               cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001

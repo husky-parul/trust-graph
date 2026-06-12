@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Pre-commit hook: scan staged files for leaked secrets before every commit.
+# Install: git config core.hooksPath .githooks
+# Bypass (emergency only): git commit --no-verify
+set -euo pipefail
+
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+FAILED=0
+
+staged_files() {
+  git diff --cached --name-only --diff-filter=ACM
+}
+
+# --- 1. Gitleaks (if installed) ---
+if command -v gitleaks &>/dev/null; then
+  echo -e "${GREEN}[pre-commit]${NC} Running gitleaks..."
+  if ! gitleaks protect --staged --no-banner; then
+    echo -e "${RED}[pre-commit] gitleaks found secrets in staged changes${NC}"
+    FAILED=1
+  fi
+else
+  # --- 2. Built-in pattern scan (fallback when gitleaks is not installed) ---
+  echo -e "${YELLOW}[pre-commit]${NC} gitleaks not found — using built-in pattern scan"
+
+  PATTERNS=(
+    # AWS
+    'AKIA[0-9A-Z]{16}'
+    # Generic high-entropy secrets (API keys, tokens assigned to variables)
+    '(?i)(api[_-]?key|secret[_-]?key|access[_-]?token|private[_-]?key|client[_-]?secret)\s*[:=]\s*["\x27][A-Za-z0-9/+=]{20,}'
+    # PEM private keys
+    '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----'
+    # GitHub / GitLab tokens
+    'gh[pousr]_[A-Za-z0-9_]{36,}'
+    'glpat-[A-Za-z0-9\-_]{20,}'
+    # Generic password in config (not demo/admin which are intentional)
+    '(?i)password\s*[:=]\s*["\x27](?!admin|demo|changeme)[A-Za-z0-9!@#$%^&*]{8,}'
+    # Bearer tokens
+    'Bearer [A-Za-z0-9\-_.]{20,}'
+    # Connection strings with embedded credentials
+    '(?i)(postgres|mysql|mongodb|redis)://[^:]+:[^@]+@'
+  )
+
+  ALLOWLIST_FILES=(
+    '\.md$'
+    'plan\.md$'
+    '\.sample$'
+  )
+
+  for file in $(staged_files); do
+    # Skip binary files, allowlisted files
+    skip=0
+    for pattern in "${ALLOWLIST_FILES[@]}"; do
+      if echo "$file" | grep -qE "$pattern"; then
+        skip=1
+        break
+      fi
+    done
+    [[ $skip -eq 1 ]] && continue
+    [[ -f "$file" ]] || continue
+
+    content=$(git show ":$file" 2>/dev/null) || continue
+
+    for pat in "${PATTERNS[@]}"; do
+      matches=$(echo "$content" | grep -nP "$pat" 2>/dev/null || true)
+      if [[ -n "$matches" ]]; then
+        echo -e "${RED}[pre-commit] Potential secret in ${file}:${NC}"
+        echo "$matches" | head -5
+        FAILED=1
+      fi
+    done
+  done
+fi
+
+# --- 3. Sensitive file check ---
+SENSITIVE_PATTERNS='\.env$|\.env\.|\.pem$|\.key$|\.p12$|\.pfx$|\.jks$|id_rsa|id_ed25519|credentials\.json|\.kube/config'
+
+for file in $(staged_files); do
+  if echo "$file" | grep -qE "$SENSITIVE_PATTERNS"; then
+    echo -e "${RED}[pre-commit] Sensitive file staged: ${file}${NC}"
+    FAILED=1
+  fi
+done
+
+# --- 4. Large file check (>1MB, likely binary/data) ---
+for file in $(staged_files); do
+  [[ -f "$file" ]] || continue
+  size=$(git cat-file -s ":$file" 2>/dev/null || echo 0)
+  if [[ $size -gt 1048576 ]]; then
+    echo -e "${YELLOW}[pre-commit] Large file ($(( size / 1024 ))KB): ${file}${NC}"
+    echo "  Consider using git-lfs or adding to .gitignore"
+    FAILED=1
+  fi
+done
+
+if [[ $FAILED -ne 0 ]]; then
+  echo ""
+  echo -e "${RED}[pre-commit] Commit blocked — fix the issues above.${NC}"
+  echo -e "  If this is a false positive, use: ${YELLOW}git commit --no-verify${NC}"
+  exit 1
+fi
+
+echo -e "${GREEN}[pre-commit] Security checks passed${NC}"

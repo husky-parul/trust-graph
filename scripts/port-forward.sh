@@ -33,7 +33,6 @@ declare -A FORWARDS=(
   ["8003"]="agentic-ml/svc/deploy-agent:8000"
   ["8080"]="agentic-ml/svc/model-registry:8080"
   ["8081"]="classic-ml/svc/model-registry:8080"
-  ["5000"]="cr-system/svc/registry:5000"
 )
 
 declare -A LABELS=(
@@ -44,7 +43,6 @@ declare -A LABELS=(
   ["8003"]="Deploy Agent (A2A)"
   ["8080"]="Model Registry (agentic, scope-checked)"
   ["8081"]="Model Registry (classic, no auth)"
-  ["5000"]="In-cluster registry"
 )
 
 > "$PID_FILE"

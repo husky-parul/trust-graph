@@ -184,10 +184,20 @@
     const header = document.createElement('div');
     header.className = 'log-header';
     header.innerHTML = `
-      <strong>Run ID:</strong> ${result.run_id || 'N/A'} &nbsp;|&nbsp;
+      <strong>Run ID:</strong> <span class="run-id-value" title="Click to copy">${result.run_id || 'N/A'}</span> &nbsp;|&nbsp;
       <strong>Status:</strong> <span class="status-${result.status}">${result.status}</span> &nbsp;|&nbsp;
       <strong>Duration:</strong> ${result.total_duration_ms || 0}ms
     `;
+    const runIdSpan = header.querySelector('.run-id-value');
+    if (runIdSpan && result.run_id) {
+      runIdSpan.style.cursor = 'pointer';
+      runIdSpan.style.textDecoration = 'underline';
+      runIdSpan.addEventListener('click', () => {
+        navigator.clipboard.writeText(result.run_id);
+        runIdSpan.textContent = 'Copied!';
+        setTimeout(() => { runIdSpan.textContent = result.run_id; }, 1000);
+      });
+    }
     logContent.appendChild(header);
 
     const stepsList = document.createElement('div');
@@ -212,29 +222,22 @@
     });
 
     logContent.appendChild(stepsList);
-
-    if (result.keycloak_events && result.keycloak_events.length > 0) {
-      const eventsEl = document.createElement('div');
-      eventsEl.className = 'log-events';
-      eventsEl.innerHTML = `
-        <strong>Keycloak Events:</strong> ${result.keycloak_events.length} TOKEN_EXCHANGE events
-        <div class="event-ids">${result.keycloak_events.join(', ')}</div>
-      `;
-      logContent.appendChild(eventsEl);
-    }
   }
 
   // View in trust graph
   function viewInTrustGraph() {
-    // Switch to trust graph tab
     const trustGraphTab = document.querySelector('.page-tab[data-page="trust-graph"]');
     if (trustGraphTab) {
       trustGraphTab.click();
 
-      // Trigger trust graph reload
       setTimeout(() => {
-        if (window.fetchData) {
-          window.fetchData();
+        const runId = lastExecutionResult?.run_id || null;
+        if (runId && window.fetchDataByRunId) {
+          document.getElementById("search-run-id").value = runId;
+          window.fetchDataByRunId(runId);
+        } else if (window.fetchData) {
+          const traceId = lastExecutionResult?.trace_id || null;
+          window.fetchData(traceId);
         }
       }, 100);
     }

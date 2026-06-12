@@ -11,7 +11,7 @@ metadata:
 spec:
   description: Data loading and preprocessing agent
   imageSource:
-    image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+    image: ttg-registry:5000/demo-ml-agent:latest
   replicas: 1
   servicePorts:
     - name: http
@@ -22,7 +22,7 @@ spec:
       serviceAccountName: data-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -40,11 +40,10 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://data-agent.agentic-ml.svc.cluster.local:8000
-            # OpenTelemetry configuration for Layer 3 traces
             - name: OTEL_ENABLED
               value: "true"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.observability.svc.cluster.local:4317"
+              value: "http://tempo.observability.svc.cluster.local:4317"
             - name: LLM_MODE
               value: "mock"
             - name: OPENAI_API_KEY
@@ -73,7 +72,7 @@ metadata:
 spec:
   description: Model training agent
   imageSource:
-    image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+    image: ttg-registry:5000/demo-ml-agent:latest
   replicas: 1
   servicePorts:
     - name: http
@@ -84,7 +83,7 @@ spec:
       serviceAccountName: training-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -102,13 +101,10 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://training-agent.agentic-ml.svc.cluster.local:8000
-            - name: DOWNSTREAM
-              value: http://model-registry.agentic-ml.svc.cluster.local:8080
-            # OpenTelemetry configuration for Layer 3 traces
             - name: OTEL_ENABLED
               value: "true"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.observability.svc.cluster.local:4317"
+              value: "http://tempo.observability.svc.cluster.local:4317"
             - name: LLM_MODE
               value: "mock"
             - name: OPENAI_API_KEY
@@ -137,7 +133,7 @@ metadata:
 spec:
   description: Model evaluation agent
   imageSource:
-    image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+    image: ttg-registry:5000/demo-ml-agent:latest
   replicas: 1
   servicePorts:
     - name: http
@@ -148,7 +144,7 @@ spec:
       serviceAccountName: eval-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -166,11 +162,10 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://eval-agent.agentic-ml.svc.cluster.local:8000
-            # OpenTelemetry configuration for Layer 3 traces
             - name: OTEL_ENABLED
               value: "true"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.observability.svc.cluster.local:4317"
+              value: "http://tempo.observability.svc.cluster.local:4317"
             - name: LLM_MODE
               value: "mock"
             - name: OPENAI_API_KEY
@@ -199,7 +194,7 @@ metadata:
 spec:
   description: Model deployment agent
   imageSource:
-    image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+    image: ttg-registry:5000/demo-ml-agent:latest
   replicas: 1
   servicePorts:
     - name: http
@@ -210,7 +205,7 @@ spec:
       serviceAccountName: deploy-agent
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -228,11 +223,10 @@ spec:
               value: http://model-registry.agentic-ml.svc.cluster.local:8080
             - name: AGENT_ENDPOINT
               value: http://deploy-agent.agentic-ml.svc.cluster.local:8000
-            # OpenTelemetry configuration for Layer 3 traces
             - name: OTEL_ENABLED
               value: "true"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://jaeger.observability.svc.cluster.local:4317"
+              value: "http://tempo.observability.svc.cluster.local:4317"
             - name: LLM_MODE
               value: "mock"
             - name: OPENAI_API_KEY
@@ -261,7 +255,7 @@ metadata:
 spec:
   description: Model registry with scope enforcement
   imageSource:
-    image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+    image: ttg-registry:5000/demo-model-registry:latest
   replicas: 1
   servicePorts:
     - name: http
@@ -272,7 +266,7 @@ spec:
       serviceAccountName: model-registry
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+          image: ttg-registry:5000/demo-model-registry:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

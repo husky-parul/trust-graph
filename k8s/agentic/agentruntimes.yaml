@@ -1,0 +1,85 @@
+---
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: data-agent
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: data-agent
+spec:
+  type: agent
+  identity:
+    spiffe:
+      trustDomain: localtest.me
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: data-agent
+---
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: training-agent
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: training-agent
+spec:
+  type: agent
+  identity:
+    spiffe:
+      trustDomain: localtest.me
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: training-agent
+---
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: eval-agent
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: eval-agent
+spec:
+  type: agent
+  identity:
+    spiffe:
+      trustDomain: localtest.me
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: eval-agent
+---
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: deploy-agent
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: deploy-agent
+spec:
+  type: agent
+  identity:
+    spiffe:
+      trustDomain: localtest.me
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploy-agent
+---
+apiVersion: agent.kagenti.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: model-registry
+  namespace: agentic-ml
+  labels:
+    app.kubernetes.io/name: model-registry
+spec:
+  type: agent
+  identity:
+    spiffe:
+      trustDomain: localtest.me
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: model-registry

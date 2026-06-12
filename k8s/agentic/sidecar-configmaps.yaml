@@ -12,7 +12,9 @@ data:
     svid_file_name = "/opt/svid.pem"
     svid_key_file_name = "/opt/svid_key.pem"
     svid_bundle_file_name = "/opt/svid_bundle.pem"
-    jwt_svids = [{jwt_audience="kagenti", jwt_svid_file_name="/opt/jwt_svid.token"}]
+    cert_file_mode = 0644
+    key_file_mode = 0640
+    jwt_svids = [{jwt_audience="http://keycloak.localtest.me:8080/realms/demo", jwt_svid_file_name="/opt/jwt_svid.token"}]
     jwt_svid_file_mode = 0644
     include_federated_domains = true
 ---
@@ -182,7 +184,16 @@ metadata:
   name: authbridge-config
   namespace: agentic-ml
 data:
-  TOKEN_URL: "http://keycloak-service.keycloak.svc:8080/realms/demo/protocol/openid-connect/token"
-  ISSUER: "http://keycloak-service.keycloak.svc:8080/realms/demo"
-  TARGET_AUDIENCE: "auth-target"
-  TARGET_SCOPES: "openid auth-target-aud"
+  KEYCLOAK_URL: "http://keycloak-service.keycloak.svc:8080"
+  KEYCLOAK_REALM: "demo"
+  KEYCLOAK_NAMESPACE: "keycloak"
+  ISSUER: "http://keycloak.localtest.me:8080/realms/demo"
+  SPIRE_ENABLED: "true"
+  CLIENT_AUTH_TYPE: "federated-jwt"
+  SPIFFE_IDP_ALIAS: "spire-spiffe"
+  JWT_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
+  EXPECTED_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
+  CREDENTIAL_WAIT_TIMEOUT: "120s"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://trust-graph-ui.trust-graph-ui.svc:8090"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/json"
+  OTEL_SERVICE_NAME: "authbridge"

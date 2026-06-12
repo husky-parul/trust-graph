@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from typing import List
 
 import httpx
 from a2a.server.agent_execution.agent_executor import AgentExecutor
@@ -10,11 +11,11 @@ from a2a.server.tasks.task_updater import TaskUpdater
 from a2a.types import Part
 
 from ml_agent.a2a_client import A2AClient
+from ml_agent.discovery import discover_agents
 from ml_agent.llm_client import call_llm
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "ml-agent")
 MODEL_REGISTRY_URL = os.environ.get("MODEL_REGISTRY_URL", "")
-DOWNSTREAM = os.environ.get("DOWNSTREAM", "")
 SA_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 SA_NAMESPACE_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
@@ -79,13 +80,12 @@ def _get_identity(auth_header: str) -> dict:
     }
 
 
-async def _call_downstream(url: str, auth_header: str) -> dict:
-    """Call downstream agent using A2A JSON-RPC protocol."""
+async def _call_downstream(url: str, auth_header: str, visited: List[str]) -> dict:
     client = A2AClient(timeout=10.0)
     return await client.send_message(
         target_url=url,
-        message="",  # Empty message - agent processes based on skills
         auth_header=auth_header,
+        visited=visited,
     )
 
 
@@ -119,6 +119,7 @@ class MLAgentExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
 
         auth_header = ""
+        visited: List[str] = []
         if context.call_context:
             state = context.call_context.state or {}
             headers = state.get("headers", {})
@@ -127,25 +128,39 @@ class MLAgentExecutor(AgentExecutor):
             elif hasattr(headers, "get"):
                 auth_header = headers.get("authorization", "")
 
+        visited_str = context.metadata.get("visited", "")
+        if visited_str:
+            visited = [v.strip() for v in visited_str.split(",") if v.strip()]
+
+        visited = visited + [AGENT_NAME]
+
         identity = _get_identity(auth_header)
 
-        # LLM reasoning step (Layer 3 runtime trace)
-        task_description = f"Process ML pipeline task for {identity.get('agent_name')}"
-        llm_response = await call_llm(task_description, identity)
+        available_agents = await discover_agents()
+        # Filter out agents already in the delegation chain
+        available_agents = [a for a in available_agents if a["name"] not in visited]
+
+        llm_response = await call_llm(
+            f"Process ML pipeline task for {identity.get('agent_name')}",
+            identity,
+            available_agents,
+        )
 
         result = {
             "agent": identity,
+            "discovered_agents": [a["name"] for a in available_agents],
             "llm_reasoning": llm_response,
             "downstream_results": [],
             "model_registry_test": None,
         }
 
-        if DOWNSTREAM:
-            for url in DOWNSTREAM.split(","):
-                url = url.strip()
-                if url:
-                    dr = await _call_downstream(url, auth_header)
-                    result["downstream_results"].append(dr)
+        delegates_to = llm_response.get("delegates_to", [])
+        agent_url_map = {a["name"]: a["url"] for a in available_agents}
+        for name in delegates_to:
+            url = agent_url_map.get(name)
+            if url:
+                dr = await _call_downstream(url, auth_header, visited)
+                result["downstream_results"].append(dr)
 
         if MODEL_REGISTRY_URL:
             result["model_registry_test"] = await _try_model_registry_write(auth_header)

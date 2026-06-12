@@ -1,0 +1,20 @@
+# Gitleaks config — allowlist for intentional demo credentials
+# This file is used when gitleaks is installed (preferred over the built-in fallback)
+
+title = "ttg gitleaks config"
+
+[allowlist]
+  description = "Demo credentials and test fixtures"
+
+  # Keycloak demo admin (admin/admin) and test user (alice/demo) are intentional
+  regexTarget = "line"
+  regexes = [
+    '''password.*(?:admin|demo|changeme)''',
+    '''mock-key-for-demo''',
+  ]
+
+  paths = [
+    '''\.md$''',
+    '''\.gitleaks\.toml$''',
+    '''plan\.md''',
+  ]

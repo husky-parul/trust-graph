@@ -17,7 +17,7 @@ spec:
       serviceAccountName: ml-pipeline-sa
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -72,7 +72,7 @@ spec:
       serviceAccountName: ml-pipeline-sa
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -127,7 +127,7 @@ spec:
       serviceAccountName: ml-pipeline-sa
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -180,7 +180,7 @@ spec:
       serviceAccountName: ml-pipeline-sa
       containers:
         - name: agent
-          image: registry.cr-system.svc.cluster.local:5000/demo-ml-agent:latest
+          image: ttg-registry:5000/demo-ml-agent:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -233,7 +233,7 @@ spec:
       serviceAccountName: ml-pipeline-sa
       containers:
         - name: registry
-          image: registry.cr-system.svc.cluster.local:5000/demo-model-registry:latest
+          image: ttg-registry:5000/demo-model-registry:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
