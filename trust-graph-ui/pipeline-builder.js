@@ -222,16 +222,6 @@
     });
 
     logContent.appendChild(stepsList);
-
-    if (result.keycloak_events && result.keycloak_events.length > 0) {
-      const eventsEl = document.createElement('div');
-      eventsEl.className = 'log-events';
-      eventsEl.innerHTML = `
-        <strong>Keycloak Events:</strong> ${result.keycloak_events.length} TOKEN_EXCHANGE events
-        <div class="event-ids">${result.keycloak_events.join(', ')}</div>
-      `;
-      logContent.appendChild(eventsEl);
-    }
   }
 
   // View in trust graph

@@ -70,6 +70,27 @@ if curl -sf "http://127.0.0.1:5000/v2/kagenti-operator/tags/list" | grep -q '"fi
   fi
 fi
 
+# 1d. Patch platform-config to use custom AuthBridge image with OTel tracing
+if curl -sf "http://127.0.0.1:5000/v2/authbridge/tags/list" | grep -q '"otel"'; then
+  log "Patching platform-config to use authbridge:otel..."
+  kubectl get cm kagenti-platform-config -n kagenti-system -o json | python3 -c "
+import sys, json, yaml
+cm = json.load(sys.stdin)
+config = yaml.safe_load(cm['data']['config.yaml'])
+config['images']['authbridge'] = 'ttg-registry:5000/authbridge:otel'
+config['images']['pullPolicy'] = 'Always'
+cm['data']['config.yaml'] = yaml.dump(config, default_flow_style=False)
+for key in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+    cm['metadata'].pop(key, None)
+cm['metadata'].get('annotations', {}).pop('kubectl.kubernetes.io/last-applied-configuration', None)
+print(json.dumps(cm))
+" | kubectl apply -f -
+  kubectl rollout restart deployment kagenti-controller-manager -n kagenti-system
+  kubectl rollout status deployment kagenti-controller-manager -n kagenti-system --timeout=120s
+else
+  log "WARNING: authbridge:otel not in registry — using stock image (no OTel tracing)"
+fi
+
 # 2. AuthBridge routes ConfigMap
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/authbridge-routes.yaml"
 
@@ -82,7 +103,7 @@ kubectl apply -f "${REPO_ROOT}/k8s/agentic/environments-configmap.yaml"
 # 3. Services
 kubectl apply -f "${REPO_ROOT}/k8s/agentic/services.yaml"
 
-# 3b. Patch authbridge-runtime-config to use demo realm (Helm defaults to kagenti)
+# 3b. Patch authbridge-runtime-config for demo realm + custom authbridge format
 log "Patching authbridge-runtime-config for demo realm..."
 kubectl apply -f - <<'AUTHCFG'
 apiVersion: v1
@@ -92,6 +113,10 @@ metadata:
   namespace: agentic-ml
 data:
   config.yaml: |
+    spiffe:
+      socket: "unix:///spiffe-workload-api/spire-agent.sock"
+      mirror_files: true
+      mirror_dir: "/opt"
     pipeline:
       inbound:
         plugins:
@@ -109,6 +134,7 @@ data:
               default_policy: "exchange"
               identity:
                 type: "spiffe"
+                jwt_audience: "http://keycloak-service.keycloak.svc:8080/realms/demo"
               routes:
                 file: "/etc/authproxy/routes.yaml"
 AUTHCFG

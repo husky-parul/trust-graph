@@ -194,3 +194,6 @@ data:
   JWT_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
   EXPECTED_AUDIENCE: "http://keycloak.localtest.me:8080/realms/demo"
   CREDENTIAL_WAIT_TIMEOUT: "120s"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://trust-graph-ui.trust-graph-ui.svc:8090"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/json"
+  OTEL_SERVICE_NAME: "authbridge"

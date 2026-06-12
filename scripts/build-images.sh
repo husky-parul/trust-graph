@@ -16,6 +16,7 @@ REGISTRY_PORT=5000
 KIND_NETWORK="kind"
 
 KAGENTI_REPO="${KAGENTI_REPO:-}"
+KAGENTI_EXTENSIONS_REPO="${KAGENTI_EXTENSIONS_REPO:-$HOME/kagenti-extensions}"
 KAGENTI_OPERATOR_REPO="${KAGENTI_OPERATOR_REPO:-}"
 if [[ -z "$KAGENTI_REPO" ]]; then
   if [[ -d "${REPO_ROOT}/../kagenti" ]]; then
@@ -115,6 +116,19 @@ if [[ -n "$KAGENTI_OPERATOR_REPO" && -f "${KAGENTI_OPERATOR_REPO}/kagenti-operat
     "${KAGENTI_OPERATOR_REPO}/kagenti-operator/"
 fi
 
+if [[ -d "${KAGENTI_EXTENSIONS_REPO}/authbridge" ]]; then
+  log "Building authbridge:otel (custom AuthBridge with OTel tracing)"
+  if ${CONTAINER_CMD} image exists localhost/authbridge:otel 2>/dev/null; then
+    log "  authbridge:otel already exists locally, skipping build"
+  else
+    ${CONTAINER_CMD} build -t authbridge:otel \
+      -f "${KAGENTI_EXTENSIONS_REPO}/authbridge/cmd/authbridge-proxy/Dockerfile" \
+      "${KAGENTI_EXTENSIONS_REPO}/authbridge"
+  fi
+else
+  log "WARNING: ${KAGENTI_EXTENSIONS_REPO}/authbridge not found, skipping authbridge:otel build"
+fi
+
 log "Pulling proxy-init (for AuthBridge iptables interception)"
 ${CONTAINER_CMD} pull ghcr.io/kagenti/kagenti-extensions/proxy-init:v0.6.0-alpha.3
 ${CONTAINER_CMD} tag ghcr.io/kagenti/kagenti-extensions/proxy-init:v0.6.0-alpha.3 proxy-init:v0.6.0-alpha.3
@@ -138,6 +152,10 @@ fi
 
 if ${CONTAINER_CMD} image exists localhost/kagenti-operator:fixed 2>/dev/null; then
   push_image "localhost/kagenti-operator:fixed" "kagenti-operator:fixed"
+fi
+
+if ${CONTAINER_CMD} image exists localhost/authbridge:otel 2>/dev/null; then
+  push_image "localhost/authbridge:otel" "authbridge:otel"
 fi
 
 log "All images built and pushed to ${REGISTRY_NAME}"
