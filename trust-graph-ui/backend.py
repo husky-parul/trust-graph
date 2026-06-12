@@ -89,9 +89,20 @@ async def _startup():
 @app.post("/v1/traces")
 async def receive_traces(request: Request):
     """Receive OTLP JSON spans from AuthBridge and store trust-relevant ones in SQLite."""
+    import logging
     body = await request.json()
+
+    # Debug: log incoming request
+    total_spans_in_request = sum(
+        len(ss.get("spans", []))
+        for rs in body.get("resourceSpans", [])
+        for ss in rs.get("scopeSpans", [])
+    )
+    logging.info(f"OTLP: received {total_spans_in_request} spans")
+
     conn = _get_db()
     stored = 0
+    skipped = 0
     try:
         for rs in body.get("resourceSpans", []):
             for ss in rs.get("scopeSpans", []):
@@ -110,7 +121,12 @@ async def receive_traces(request: Request):
                             )
 
                     if not any(k.startswith("trust.") for k in attrs):
+                        skipped += 1
                         continue
+
+                    # Debug: log trust attributes found
+                    trust_attrs = {k: v for k, v in attrs.items() if k.startswith("trust.")}
+                    logging.debug(f"OTLP: storing span with trust attrs: {trust_attrs}")
 
                     scopes_raw = attrs.get("trust.scopes", "")
                     scopes_list = [s for s in scopes_raw.split() if s] if scopes_raw else []
@@ -137,7 +153,15 @@ async def receive_traces(request: Request):
         conn.commit()
     finally:
         conn.close()
-    return JSONResponse(content={"stored": stored})
+
+    # Log for debugging
+    import logging
+    if stored > 0:
+        logging.info(f"OTLP: stored {stored} trust spans")
+    if skipped > 0:
+        logging.debug(f"OTLP: skipped {skipped} spans (no trust.* attributes)")
+
+    return JSONResponse(content={"stored": stored, "skipped": skipped})
 
 
 def _normalize_id(raw: str) -> str:
@@ -539,6 +563,37 @@ async def trust_graph(
     if trace_id:
         result["trace_id"] = trace_id
     return result
+
+
+@app.get("/api/debug/spans")
+async def debug_spans(limit: int = 10):
+    """Debug endpoint to inspect stored spans."""
+    conn = _get_db()
+    rows = conn.execute(
+        """SELECT span_id, trace_id, source, target, hop_kind, status, scopes, principal, raw_attributes
+           FROM trust_spans
+           ORDER BY timestamp DESC
+           LIMIT ?""",
+        (limit,)
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for r in rows:
+        attrs = json.loads(r["raw_attributes"]) if r["raw_attributes"] else {}
+        result.append({
+            "span_id": r["span_id"][:8] + "..." if len(r["span_id"]) > 8 else r["span_id"],
+            "trace_id": r["trace_id"][:8] + "..." if len(r["trace_id"]) > 8 else r["trace_id"],
+            "source": r["source"],
+            "target": r["target"],
+            "hop_kind": r["hop_kind"],
+            "status": r["status"],
+            "scopes": json.loads(r["scopes"]) if r["scopes"] else [],
+            "principal": r["principal"],
+            "trust_attrs": {k: v for k, v in attrs.items() if k.startswith("trust.")},
+        })
+
+    return {"spans": result, "total": len(result)}
 
 
 @app.get("/api/pipeline-runs")

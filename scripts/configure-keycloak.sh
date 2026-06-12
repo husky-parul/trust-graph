@@ -193,6 +193,23 @@ if clients: print(clients[0]['id'])
     kc_api PUT "/${REALM}/clients/${client_uuid}" \
       "{\"attributes\":{\"standard.token.exchange.enabled\":\"true\"}}"
     log "Enabled token exchange on ${client_id}"
+
+    # Assign audience scopes so Alice's token includes agent SPIFFE IDs in aud claim
+    # (required by Keycloak 26 standard token exchange)
+    for target in "${AGENTS[@]}"; do
+      local aud_scope_id
+      aud_scope_id=$(kc_api GET "/${REALM}/client-scopes" | python3 -c "
+import sys,json
+for s in json.load(sys.stdin):
+    if s['name']=='aud:${target}':
+        print(s['id'])
+        break
+" 2>/dev/null) || continue
+      if [[ -n "$aud_scope_id" ]]; then
+        kc_api PUT "/${REALM}/clients/${client_uuid}/default-client-scopes/${aud_scope_id}" ""
+      fi
+    done
+    log "Assigned audience scopes to ${client_id}"
   fi
 }
 
